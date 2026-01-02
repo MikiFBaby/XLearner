@@ -14,6 +14,9 @@ interface TwitterBookmark {
       expanded_url: string;
     }>;
   };
+  attachments?: {
+    media_keys?: string[];
+  };
 }
 
 interface TwitterUser {
@@ -23,10 +26,18 @@ interface TwitterUser {
   profile_image_url?: string;
 }
 
+interface TwitterMedia {
+  media_key: string;
+  type: "photo" | "video" | "animated_gif";
+  url?: string;
+  preview_image_url?: string;
+}
+
 interface TwitterBookmarksResponse {
   data?: TwitterBookmark[];
   includes?: {
     users?: TwitterUser[];
+    media?: TwitterMedia[];
   };
   meta?: {
     next_token?: string;
@@ -62,10 +73,11 @@ export async function fetchTwitterBookmarks(
     url.searchParams.set("max_results", String(Math.min(maxResults, 100)));
     url.searchParams.set(
       "tweet.fields",
-      "created_at,public_metrics,entities,author_id"
+      "created_at,public_metrics,entities,author_id,attachments"
     );
-    url.searchParams.set("expansions", "author_id");
+    url.searchParams.set("expansions", "author_id,attachments.media_keys");
     url.searchParams.set("user.fields", "name,username,profile_image_url");
+    url.searchParams.set("media.fields", "url,preview_image_url,type");
 
     const response = await fetch(url.toString(), {
       headers: {
@@ -110,9 +122,32 @@ export async function fetchTwitterBookmarks(
       }
     }
 
+    // Create a map of media for quick lookup
+    const mediaMap = new Map<string, TwitterMedia>();
+    if (data.includes?.media) {
+      for (const media of data.includes.media) {
+        mediaMap.set(media.media_key, media);
+      }
+    }
+
     // Parse bookmarks
     const bookmarks: ParsedBookmark[] = data.data.map((tweet) => {
       const author = usersMap.get(tweet.author_id);
+
+      // Get media URLs for this tweet
+      const mediaUrls: string[] = [];
+      if (tweet.attachments?.media_keys) {
+        for (const mediaKey of tweet.attachments.media_keys) {
+          const media = mediaMap.get(mediaKey);
+          if (media) {
+            // For photos, use url; for videos/gifs, use preview_image_url
+            const mediaUrl = media.url || media.preview_image_url;
+            if (mediaUrl) {
+              mediaUrls.push(mediaUrl);
+            }
+          }
+        }
+      }
 
       return {
         tweetId: tweet.id,
@@ -124,8 +159,8 @@ export async function fetchTwitterBookmarks(
         tweetLikes: tweet.public_metrics?.like_count || 0,
         tweetRetweets: tweet.public_metrics?.retweet_count || 0,
         tweetUrl: `https://twitter.com/${author?.username || "i"}/status/${tweet.id}`,
-        hasMedia: false, // Would need media.fields expansion to detect
-        mediaUrls: [],
+        hasMedia: mediaUrls.length > 0,
+        mediaUrls,
       };
     });
 
