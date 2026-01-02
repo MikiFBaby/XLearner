@@ -13,7 +13,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-slate-50">
       {/* Desktop sidebar */}
       <Sidebar />
 
@@ -21,12 +21,10 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       <MobileSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
       {/* Main content area */}
-      <div className="lg:pl-72">
+      <div className="lg:pl-64">
         <Header onMenuClick={() => setSidebarOpen(true)} />
-        <main className="py-6">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            {children}
-          </div>
+        <main className="p-4 sm:p-6 lg:p-8">
+          {children}
         </main>
       </div>
     </div>
