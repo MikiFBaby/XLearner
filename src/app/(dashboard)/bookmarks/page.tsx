@@ -87,7 +87,7 @@ function BookmarkCard({ bookmark }: { bookmark: BookmarkData }) {
         </p>
 
         {/* Topics */}
-        {bookmark.topics.length > 0 && (
+        {bookmark.topics && bookmark.topics.length > 0 && (
           <div className="flex flex-wrap gap-1">
             {bookmark.topics.map((topic) => (
               <span
