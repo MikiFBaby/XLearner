@@ -44,6 +44,7 @@ export function SyncHub({
   const [addStatus, setAddStatus] = useState<{ success: boolean; message: string } | null>(null);
 
   const handleRefreshYouTubeMetadata = async () => {
+    alert("Refresh Titles clicked!");
     setRefreshingMetadata(true);
     try {
       const res = await fetch("/api/resources", {
@@ -53,6 +54,7 @@ export function SyncHub({
       const data = await res.json();
       // Debug: log full response to browser console
       console.log("[Refresh Titles Response]", JSON.stringify(data, null, 2));
+      alert("Response: " + JSON.stringify(data, null, 2));
       if (res.ok) {
         setAddStatus({
           success: true,
