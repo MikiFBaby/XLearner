@@ -98,28 +98,31 @@ export const authOptions: NextAuthOptions = {
 
         if (twitterProfile.data) {
           try {
-            // Look for existing user by Twitter ID
-            const existingByTwitter = await db
-              .select()
-              .from(users)
-              .where(eq(users.twitterId, twitterProfile.data.id))
-              .limit(1);
+            const twitterEmail = `${twitterProfile.data.username}@twitter.local`;
 
             // Calculate token expiration
             const tokenExpiresAt = account.expires_at
               ? new Date(account.expires_at * 1000)
               : new Date(Date.now() + 2 * 60 * 60 * 1000); // 2 hours default
 
+            // Look for existing user by Twitter ID first
+            const existingByTwitter = await db
+              .select()
+              .from(users)
+              .where(eq(users.twitterId, twitterProfile.data.id))
+              .limit(1);
+
             if (existingByTwitter.length > 0) {
-              // User exists with this Twitter account
+              // User exists with this Twitter account - update tokens
               user.id = existingByTwitter[0].id;
               user.email = existingByTwitter[0].email;
               user.name = existingByTwitter[0].name;
 
-              // Update Twitter tokens and credentials
               await db
                 .update(users)
                 .set({
+                  twitterUsername: twitterProfile.data.username,
+                  twitterName: twitterProfile.data.name,
                   twitterAvatar: twitterProfile.data.profile_image_url,
                   twitterConnectedAt: new Date(),
                   accessToken: account.access_token,
@@ -128,32 +131,67 @@ export const authOptions: NextAuthOptions = {
                   updatedAt: new Date(),
                 })
                 .where(eq(users.id, existingByTwitter[0].id));
-            } else {
-              // Create new user from Twitter
-              const newUserId = crypto.randomUUID();
-              const twitterEmail = `${twitterProfile.data.username}@twitter.local`;
 
-              await db.insert(users).values({
-                id: newUserId,
-                email: twitterEmail,
-                name: twitterProfile.data.name,
-                image: twitterProfile.data.profile_image_url,
-                twitterId: twitterProfile.data.id,
-                twitterUsername: twitterProfile.data.username,
-                twitterName: twitterProfile.data.name,
-                twitterAvatar: twitterProfile.data.profile_image_url,
-                twitterConnectedAt: new Date(),
-                accessToken: account.access_token,
-                refreshToken: account.refresh_token,
-                tokenExpiresAt: tokenExpiresAt,
-                emailVerified: new Date(),
-                createdAt: new Date(),
-                updatedAt: new Date(),
-              });
-
-              user.id = newUserId;
-              user.email = twitterEmail;
+              console.log("Updated existing user with Twitter ID:", existingByTwitter[0].id);
+              return true;
             }
+
+            // Check if user exists with the twitter.local email (previous connection)
+            const existingByEmail = await db
+              .select()
+              .from(users)
+              .where(eq(users.email, twitterEmail))
+              .limit(1);
+
+            if (existingByEmail.length > 0) {
+              // User exists with this email - update with Twitter data
+              user.id = existingByEmail[0].id;
+              user.email = existingByEmail[0].email;
+              user.name = existingByEmail[0].name || twitterProfile.data.name;
+
+              await db
+                .update(users)
+                .set({
+                  twitterId: twitterProfile.data.id,
+                  twitterUsername: twitterProfile.data.username,
+                  twitterName: twitterProfile.data.name,
+                  twitterAvatar: twitterProfile.data.profile_image_url,
+                  twitterConnectedAt: new Date(),
+                  accessToken: account.access_token,
+                  refreshToken: account.refresh_token,
+                  tokenExpiresAt: tokenExpiresAt,
+                  updatedAt: new Date(),
+                })
+                .where(eq(users.id, existingByEmail[0].id));
+
+              console.log("Updated existing user by email:", existingByEmail[0].id);
+              return true;
+            }
+
+            // No existing user found - create new user from Twitter
+            const newUserId = crypto.randomUUID();
+
+            await db.insert(users).values({
+              id: newUserId,
+              email: twitterEmail,
+              name: twitterProfile.data.name,
+              image: twitterProfile.data.profile_image_url,
+              twitterId: twitterProfile.data.id,
+              twitterUsername: twitterProfile.data.username,
+              twitterName: twitterProfile.data.name,
+              twitterAvatar: twitterProfile.data.profile_image_url,
+              twitterConnectedAt: new Date(),
+              accessToken: account.access_token,
+              refreshToken: account.refresh_token,
+              tokenExpiresAt: tokenExpiresAt,
+              emailVerified: new Date(),
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            });
+
+            user.id = newUserId;
+            user.email = twitterEmail;
+            console.log("Created new user from Twitter:", newUserId);
             return true;
           } catch (error) {
             console.error("Twitter OAuth signIn error:", error);
