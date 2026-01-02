@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { TwitterConnectClient } from "./twitter-connect-client";
+import { BookmarksKanban } from "@/components/bookmarks-kanban";
 
 // Welcome Banner Component
 function WelcomeBanner({
@@ -376,6 +377,11 @@ export default async function DashboardPage() {
             lastSyncAt={user.lastSyncAt}
             enableRealtimeSync={user.enableRealtimeSync}
           />
+        )}
+
+        {/* AI Learning Kanban Board */}
+        {isTwitterConnected && stats.bookmarks > 0 && (
+          <BookmarksKanban />
         )}
 
         {/* Featured Carousel */}
