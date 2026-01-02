@@ -53,16 +53,19 @@ export function SyncHub({
   };
 
   const addResource = async (url: string): Promise<boolean> => {
+    console.log("addResource called with URL:", url);
     if (!url.trim()) return false;
 
     setAddingResource(true);
     try {
+      console.log("Fetching /api/resources...");
       const res = await fetch("/api/resources", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: url.trim() }),
         credentials: "include",
       });
+      console.log("Fetch response status:", res.status);
 
       const data = await res.json();
 
@@ -93,8 +96,13 @@ export function SyncHub({
   };
 
   const handleAddYouTube = async () => {
-    if (!youtubeUrl.trim()) return;
+    console.log("handleAddYouTube called, URL:", youtubeUrl);
+    if (!youtubeUrl.trim()) {
+      console.log("URL is empty, returning");
+      return;
+    }
     const success = await addResource(youtubeUrl);
+    console.log("addResource result:", success);
     if (success) setYoutubeUrl("");
   };
 
