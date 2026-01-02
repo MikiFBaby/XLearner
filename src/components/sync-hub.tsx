@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Twitter,
   Youtube,
@@ -32,6 +33,7 @@ export function SyncHub({
   onSyncTwitter,
 }: SyncHubProps) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [expanded, setExpanded] = useState<Platform | null>(null);
   const [syncing, setSyncing] = useState<Platform | null>(null);
   const [urlInput, setUrlInput] = useState("");
@@ -71,6 +73,8 @@ export function SyncHub({
           success: true,
           message: data.data.isNew ? "Resource added!" : "Already saved"
         });
+        // Invalidate React Query cache to refresh the grid
+        queryClient.invalidateQueries({ queryKey: ["resources"] });
         router.refresh();
         return true;
       } else {
