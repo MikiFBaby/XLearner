@@ -55,6 +55,7 @@ export interface ParsedBookmark {
   tweetAuthorId: string;
   tweetAuthorName: string;
   tweetAuthorHandle: string;
+  tweetAuthorProfileImage: string | null;
   tweetCreatedAt: Date;
   tweetLikes: number;
   tweetRetweets: number;
@@ -155,6 +156,7 @@ export async function fetchTwitterBookmarks(
         tweetAuthorId: tweet.author_id,
         tweetAuthorName: author?.name || "Unknown",
         tweetAuthorHandle: author?.username || "unknown",
+        tweetAuthorProfileImage: author?.profile_image_url?.replace("_normal", "_400x400") || null,
         tweetCreatedAt: new Date(tweet.created_at),
         tweetLikes: tweet.public_metrics?.like_count || 0,
         tweetRetweets: tweet.public_metrics?.retweet_count || 0,

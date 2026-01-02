@@ -46,6 +46,28 @@ function extractRedditInfo(url: string): { subreddit?: string } {
   return { subreddit: match ? match[1] : undefined };
 }
 
+// Fetch YouTube video metadata using oembed (no API key required)
+async function fetchYouTubeMetadata(url: string): Promise<{
+  title?: string;
+  authorName?: string;
+  thumbnailUrl?: string;
+}> {
+  try {
+    const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
+    const response = await fetch(oembedUrl);
+    if (!response.ok) return {};
+
+    const data = await response.json();
+    return {
+      title: data.title,
+      authorName: data.author_name,
+      thumbnailUrl: data.thumbnail_url,
+    };
+  } catch {
+    return {};
+  }
+}
+
 // POST /api/resources - Add a new resource
 export const POST = withErrorHandler(async (request: NextRequest) => {
   const user = await requireAuth();
@@ -58,13 +80,20 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     channelId?: string;
     subreddit?: string;
     videoDuration?: number;
+    title?: string;
+    authorName?: string;
+    thumbnailUrl?: string;
   } = {};
 
   if (platform === "youtube") {
     const videoId = extractYouTubeId(body.url);
     if (videoId) {
-      // Could fetch YouTube metadata here with YouTube Data API
-      metadata.channelId = videoId; // Store video ID for now
+      metadata.channelId = videoId;
+      // Fetch YouTube video metadata (title, author, thumbnail)
+      const ytMetadata = await fetchYouTubeMetadata(body.url);
+      metadata.title = ytMetadata.title;
+      metadata.authorName = ytMetadata.authorName;
+      metadata.thumbnailUrl = ytMetadata.thumbnailUrl;
     }
   } else if (platform === "reddit") {
     const redditInfo = extractRedditInfo(body.url);
@@ -93,9 +122,13 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       userId: user.id,
       url: body.url,
       platform,
-      title: body.title,
+      title: body.title || metadata.title,
       description: body.description,
-      ...metadata,
+      authorName: metadata.authorName,
+      thumbnailUrl: metadata.thumbnailUrl,
+      channelId: metadata.channelId,
+      subreddit: metadata.subreddit,
+      videoDuration: metadata.videoDuration,
     })
     .returning();
 

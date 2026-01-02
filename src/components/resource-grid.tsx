@@ -41,10 +41,12 @@ interface Resource {
   url: string;
   author: string;
   authorHandle?: string;
+  authorProfileImage?: string;
   createdAt: Date;
   isCompleted?: boolean;
   progress?: number; // 0-100
   xpReward?: number;
+  topics?: string[];
 }
 
 interface ResourceGridProps {
@@ -86,6 +88,20 @@ function CategoryPill({ category, active, onClick }: { category: string; active:
       {category.charAt(0).toUpperCase() + category.slice(1)}
     </button>
   );
+}
+
+// Get category badge styling
+function getCategoryStyle(category: Category): string {
+  const styles: Record<Category, string> = {
+    tech: "bg-blue-500/20 text-blue-300 border border-blue-500/30",
+    science: "bg-green-500/20 text-green-300 border border-green-500/30",
+    business: "bg-amber-500/20 text-amber-300 border border-amber-500/30",
+    creative: "bg-pink-500/20 text-pink-300 border border-pink-500/30",
+    language: "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30",
+    other: "bg-white/10 text-white/60 border border-white/20",
+    all: "bg-purple-500/20 text-purple-300 border border-purple-500/30",
+  };
+  return styles[category] || styles.other;
 }
 
 // Helper to extract YouTube video ID and get thumbnail
@@ -283,18 +299,49 @@ function ResourceCard({ resource, onAction }: { resource: Resource; onAction: (a
 
       {/* Content Section */}
       <div className="p-3">
-        <h3 className="text-sm font-semibold text-white line-clamp-2 mb-1 group-hover:text-purple-300 transition-colors">
+        <h3 className="text-sm font-semibold text-white line-clamp-2 mb-2 group-hover:text-purple-300 transition-colors">
           {resource.title || resource.description?.slice(0, 60) || "Untitled Resource"}
         </h3>
-        <div className="flex items-center gap-2 text-xs text-white/50">
-          <span className="truncate">{resource.author}</span>
-          {resource.authorHandle && (
-            <>
-              <span>·</span>
-              <span className="text-white/40">@{resource.authorHandle}</span>
-            </>
+
+        {/* Author with profile image */}
+        <div className="flex items-center gap-2 mb-2">
+          {resource.authorProfileImage ? (
+            <img
+              src={resource.authorProfileImage}
+              alt={resource.author}
+              className="w-5 h-5 rounded-full object-cover"
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = 'none';
+              }}
+            />
+          ) : (
+            <div className="w-5 h-5 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+              <span className="text-[10px] font-bold text-white">
+                {resource.author?.charAt(0)?.toUpperCase() || '?'}
+              </span>
+            </div>
           )}
+          <div className="flex items-center gap-1 text-xs text-white/50 truncate">
+            <span className="truncate font-medium text-white/70">{resource.author}</span>
+            {resource.authorHandle && (
+              <span className="text-white/40 truncate">@{resource.authorHandle}</span>
+            )}
+          </div>
         </div>
+
+        {/* Category badge */}
+        {resource.category && resource.category !== "other" && (
+          <div className="flex items-center gap-1">
+            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${getCategoryStyle(resource.category)}`}>
+              {resource.category.charAt(0).toUpperCase() + resource.category.slice(1)}
+            </span>
+            {resource.topics && resource.topics.length > 0 && (
+              <span className="text-[10px] text-white/30">
+                +{resource.topics.length} topics
+              </span>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -340,7 +387,7 @@ export function ResourceGrid({ columns = 4, rows = 4 }: ResourceGridProps) {
 
     return {
       id: b.id,
-      title: b.tweetText?.slice(0, 100) || "",
+      title: b.summary || b.tweetText?.slice(0, 100) || "",
       description: b.tweetText || "",
       platform: "twitter" as Platform,
       category: detectCategory(b.topics || []),
@@ -352,10 +399,12 @@ export function ResourceGrid({ columns = 4, rows = 4 }: ResourceGridProps) {
       url: b.tweetUrl,
       author: b.tweetAuthorName,
       authorHandle: b.tweetAuthorHandle,
+      authorProfileImage: b.tweetAuthorProfileImage,
       createdAt: new Date(b.createdAt || b.bookmarkedAt),
       isCompleted: false,
       progress: 0,
       xpReward: 25,
+      topics: b.topics,
     };
   });
 
@@ -546,20 +595,61 @@ export function ResourceGrid({ columns = 4, rows = 4 }: ResourceGridProps) {
 // Helper to detect category from topics
 function detectCategory(topics: string[]): Category {
   const topicsLower = topics.map(t => t.toLowerCase());
+  const topicsText = topicsLower.join(' ');
 
-  if (topicsLower.some(t => ["programming", "coding", "javascript", "python", "react", "ai", "ml", "software", "web", "data"].includes(t))) {
+  // Tech keywords - expanded list
+  const techKeywords = [
+    "programming", "coding", "javascript", "python", "react", "ai", "ml", "software", "web", "data",
+    "typescript", "nodejs", "api", "database", "cloud", "devops", "github", "code", "developer",
+    "engineering", "algorithm", "frontend", "backend", "fullstack", "machine learning", "deep learning",
+    "neural", "crypto", "blockchain", "cybersecurity", "security", "hacking", "linux", "docker",
+    "kubernetes", "aws", "azure", "gcp", "mobile", "ios", "android", "rust", "golang", "java",
+    "c++", "swift", "kotlin", "flutter", "nextjs", "vue", "angular", "svelte", "tech", "technology"
+  ];
+
+  // Science keywords
+  const scienceKeywords = [
+    "science", "physics", "biology", "chemistry", "research", "math", "mathematics", "statistics",
+    "quantum", "astronomy", "space", "nasa", "medicine", "health", "neuroscience", "psychology",
+    "genetics", "evolution", "climate", "environment", "ecology", "geology", "scientific"
+  ];
+
+  // Business keywords
+  const businessKeywords = [
+    "business", "startup", "marketing", "finance", "investing", "entrepreneur", "leadership",
+    "management", "strategy", "growth", "revenue", "sales", "product", "market", "economy",
+    "money", "stocks", "trading", "venture", "vc", "founder", "ceo", "saas", "b2b", "b2c",
+    "ecommerce", "pricing", "negotiation", "career", "job", "hiring", "productivity"
+  ];
+
+  // Creative keywords
+  const creativeKeywords = [
+    "design", "art", "creative", "music", "writing", "photo", "photography", "video", "film",
+    "animation", "illustration", "ui", "ux", "graphic", "visual", "aesthetic", "brand", "logo",
+    "typography", "color", "portfolio", "artist", "creator", "content", "storytelling"
+  ];
+
+  // Language keywords
+  const languageKeywords = [
+    "language", "english", "spanish", "french", "german", "japanese", "chinese", "korean",
+    "vocabulary", "grammar", "speaking", "writing", "reading", "fluent", "translation",
+    "linguistics", "communication"
+  ];
+
+  // Check each category
+  if (techKeywords.some(k => topicsText.includes(k) || topicsLower.some(t => t.includes(k)))) {
     return "tech";
   }
-  if (topicsLower.some(t => ["science", "physics", "biology", "chemistry", "research", "math"].includes(t))) {
+  if (scienceKeywords.some(k => topicsText.includes(k) || topicsLower.some(t => t.includes(k)))) {
     return "science";
   }
-  if (topicsLower.some(t => ["business", "startup", "marketing", "finance", "investing", "entrepreneur"].includes(t))) {
+  if (businessKeywords.some(k => topicsText.includes(k) || topicsLower.some(t => t.includes(k)))) {
     return "business";
   }
-  if (topicsLower.some(t => ["design", "art", "creative", "music", "writing", "photo"].includes(t))) {
+  if (creativeKeywords.some(k => topicsText.includes(k) || topicsLower.some(t => t.includes(k)))) {
     return "creative";
   }
-  if (topicsLower.some(t => ["language", "english", "spanish", "learn", "vocabulary"].includes(t))) {
+  if (languageKeywords.some(k => topicsText.includes(k) || topicsLower.some(t => t.includes(k)))) {
     return "language";
   }
 

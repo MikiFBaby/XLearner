@@ -80,6 +80,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
       tweetAuthorId: bookmarks.tweetAuthorId,
       tweetAuthorName: bookmarks.tweetAuthorName,
       tweetAuthorHandle: bookmarks.tweetAuthorHandle,
+      tweetAuthorProfileImage: bookmarks.tweetAuthorProfileImage,
       tweetCreatedAt: bookmarks.tweetCreatedAt,
       tweetLikes: bookmarks.tweetLikes,
       tweetRetweets: bookmarks.tweetRetweets,

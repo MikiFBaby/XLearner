@@ -98,6 +98,7 @@ export const POST = withErrorHandler(async (_request: NextRequest) => {
         tweetAuthorId: bookmark.tweetAuthorId,
         tweetAuthorName: bookmark.tweetAuthorName,
         tweetAuthorHandle: bookmark.tweetAuthorHandle,
+        tweetAuthorProfileImage: bookmark.tweetAuthorProfileImage,
         tweetCreatedAt: bookmark.tweetCreatedAt,
         tweetLikes: bookmark.tweetLikes,
         tweetRetweets: bookmark.tweetRetweets,

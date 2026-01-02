@@ -81,6 +81,7 @@ export const bookmarks = pgTable(
     tweetAuthorId: text("tweetAuthorId").notNull(),
     tweetAuthorName: text("tweetAuthorName").notNull(),
     tweetAuthorHandle: text("tweetAuthorHandle").notNull(),
+    tweetAuthorProfileImage: text("tweetAuthorProfileImage"),
     tweetCreatedAt: timestamp("tweetCreatedAt", { mode: "date" }).notNull(),
     tweetLikes: integer("tweetLikes").default(0).notNull(),
     tweetRetweets: integer("tweetRetweets").default(0).notNull(),
