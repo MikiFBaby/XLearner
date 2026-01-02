@@ -46,6 +46,69 @@ function extractRedditInfo(url: string): { subreddit?: string } {
   return { subreddit: match ? match[1] : undefined };
 }
 
+// Generate a short summary from video title and description
+function generateVideoSummary(title: string, description?: string): string {
+  // Clean up title - remove common suffixes
+  let cleanTitle = title
+    .replace(/\s*\|\s*.+$/, '') // Remove "| Channel Name" suffix
+    .replace(/\s*-\s*Official.*$/i, '') // Remove "- Official Video" etc
+    .replace(/\s*\(Official.*\)$/i, '') // Remove "(Official Video)" etc
+    .replace(/\s*\[.*\]$/i, '') // Remove bracketed suffixes
+    .trim();
+
+  // If description exists, try to extract first meaningful sentence
+  if (description) {
+    const firstSentence = description
+      .split(/[.!?\n]/)[0]
+      ?.trim()
+      ?.slice(0, 150);
+
+    if (firstSentence && firstSentence.length > 30 && !firstSentence.includes('http')) {
+      return firstSentence + (firstSentence.length >= 150 ? '...' : '');
+    }
+  }
+
+  // Fallback to cleaned title
+  return `Learn about ${cleanTitle}`;
+}
+
+// Extract skills/learning outcomes from tags and description
+function extractSkills(tags?: string[], description?: string, title?: string): string[] {
+  const skills: Set<string> = new Set();
+
+  // Common learning-related keywords to look for
+  const skillKeywords = [
+    'learn', 'tutorial', 'how to', 'guide', 'tips', 'tricks', 'master',
+    'beginner', 'advanced', 'introduction', 'basics', 'fundamentals',
+    'programming', 'coding', 'design', 'marketing', 'business', 'finance',
+    'productivity', 'communication', 'leadership', 'analytics', 'strategy'
+  ];
+
+  // Extract from tags
+  if (tags) {
+    tags.slice(0, 5).forEach(tag => {
+      const cleanTag = tag.toLowerCase().trim();
+      if (cleanTag.length > 2 && cleanTag.length < 30) {
+        // Capitalize first letter
+        skills.add(tag.charAt(0).toUpperCase() + tag.slice(1).toLowerCase());
+      }
+    });
+  }
+
+  // Extract from title
+  if (title) {
+    const titleLower = title.toLowerCase();
+    skillKeywords.forEach(keyword => {
+      if (titleLower.includes(keyword)) {
+        skills.add(keyword.charAt(0).toUpperCase() + keyword.slice(1));
+      }
+    });
+  }
+
+  // Return top 3-5 skills
+  return Array.from(skills).slice(0, 5);
+}
+
 // Fetch YouTube video metadata using YouTube Data API v3
 async function fetchYouTubeMetadata(url: string): Promise<{
   title?: string;
@@ -55,6 +118,8 @@ async function fetchYouTubeMetadata(url: string): Promise<{
   thumbnailUrl?: string;
   tags?: string[];
   channelId?: string;
+  summary?: string;
+  skills?: string[];
 }> {
   const apiKey = process.env.YOUTUBE_API_KEY;
 
@@ -113,17 +178,22 @@ async function fetchYouTubeMetadata(url: string): Promise<{
       }
     }
 
+    const fullDescription = snippet.description || '';
+    const videoTags = snippet.tags || [];
+
     return {
       title: snippet.title,
-      description: snippet.description?.slice(0, 500),
+      description: fullDescription.slice(0, 500),
       authorName: snippet.channelTitle,
       authorProfileImage,
       thumbnailUrl: snippet.thumbnails?.maxres?.url ||
                    snippet.thumbnails?.high?.url ||
                    snippet.thumbnails?.medium?.url ||
                    snippet.thumbnails?.default?.url,
-      tags: snippet.tags?.slice(0, 10),
+      tags: videoTags.slice(0, 10),
       channelId,
+      summary: generateVideoSummary(snippet.title, fullDescription),
+      skills: extractSkills(videoTags, fullDescription, snippet.title),
     };
   } catch (error) {
     console.error("Error fetching YouTube metadata:", error);
@@ -149,6 +219,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     authorHandle?: string; // Store channel profile image URL here
     thumbnailUrl?: string;
     topics?: string[];
+    summary?: string;
+    skills?: string[];
   } = {};
 
   if (platform === "youtube") {
@@ -200,6 +272,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       subreddit: metadata.subreddit,
       videoDuration: metadata.videoDuration,
       topics: metadata.topics,
+      summary: metadata.summary,
+      keyTakeaways: metadata.skills,
     })
     .returning();
 
@@ -264,8 +338,8 @@ export const PATCH = withErrorHandler(async (_request: NextRequest) => {
 
   let updated = 0;
   for (const resource of youtubeResources) {
-    // Update if missing title, author, or author profile image
-    if (!resource.title || resource.title === resource.url || !resource.authorName || !resource.authorHandle) {
+    // Update if missing title, author, profile image, summary, or skills
+    if (!resource.title || resource.title === resource.url || !resource.authorName || !resource.authorHandle || !resource.summary || !resource.keyTakeaways?.length) {
       const metadata = await fetchYouTubeMetadata(resource.url);
 
       if (metadata.title || metadata.authorName || metadata.authorProfileImage) {
@@ -279,6 +353,8 @@ export const PATCH = withErrorHandler(async (_request: NextRequest) => {
             thumbnailUrl: metadata.thumbnailUrl || resource.thumbnailUrl,
             channelId: metadata.channelId || resource.channelId,
             topics: metadata.tags || resource.topics,
+            summary: metadata.summary || resource.summary,
+            keyTakeaways: metadata.skills || resource.keyTakeaways,
           })
           .where(eq(resources.id, resource.id));
         updated++;

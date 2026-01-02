@@ -47,6 +47,8 @@ interface Resource {
   progress?: number; // 0-100
   xpReward?: number;
   topics?: string[];
+  summary?: string;
+  skills?: string[];
 }
 
 interface ResourceGridProps {
@@ -299,9 +301,16 @@ function ResourceCard({ resource, onAction }: { resource: Resource; onAction: (a
 
       {/* Content Section */}
       <div className="p-3">
-        <h3 className="text-sm font-semibold text-white line-clamp-2 mb-2 group-hover:text-purple-300 transition-colors">
+        <h3 className="text-sm font-semibold text-white line-clamp-2 mb-1 group-hover:text-purple-300 transition-colors">
           {resource.title || resource.description?.slice(0, 60) || "Untitled Resource"}
         </h3>
+
+        {/* Summary - show for YouTube videos */}
+        {resource.summary && resource.platform === "youtube" && (
+          <p className="text-[11px] text-white/50 line-clamp-2 mb-2 leading-relaxed">
+            {resource.summary}
+          </p>
+        )}
 
         {/* Author with profile image */}
         <div className="flex items-center gap-2 mb-2">
@@ -329,6 +338,23 @@ function ResourceCard({ resource, onAction }: { resource: Resource; onAction: (a
             )}
           </div>
         </div>
+
+        {/* Skills badges - show for YouTube videos */}
+        {resource.skills && resource.skills.length > 0 && resource.platform === "youtube" && (
+          <div className="flex flex-wrap gap-1 mb-2">
+            {resource.skills.slice(0, 3).map((skill, idx) => (
+              <span
+                key={idx}
+                className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+              >
+                {skill}
+              </span>
+            ))}
+            {resource.skills.length > 3 && (
+              <span className="text-[9px] text-white/40">+{resource.skills.length - 3}</span>
+            )}
+          </div>
+        )}
 
         {/* Category badge */}
         {resource.category && resource.category !== "other" && (
@@ -428,6 +454,8 @@ export function ResourceGrid({ columns = 4, rows = 4 }: ResourceGridProps) {
     progress: 0,
     xpReward: r.platform === "youtube" ? 50 : 25,
     topics: r.topics,
+    summary: r.summary,
+    skills: r.keyTakeaways,
   }));
 
   // Combine all resources
