@@ -175,3 +175,45 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
 
   return paginatedResponse(results, page, pageSize, total);
 });
+
+// PATCH /api/resources - Refresh metadata for YouTube videos
+export const PATCH = withErrorHandler(async (_request: NextRequest) => {
+  const user = await requireAuth();
+
+  // Get all YouTube resources without titles for this user
+  const youtubeResources = await db
+    .select()
+    .from(resources)
+    .where(
+      and(
+        eq(resources.userId, user.id),
+        eq(resources.platform, "youtube")
+      )
+    );
+
+  let updated = 0;
+  for (const resource of youtubeResources) {
+    // Only update if missing title or author
+    if (!resource.title || resource.title === resource.url || !resource.authorName) {
+      const metadata = await fetchYouTubeMetadata(resource.url);
+
+      if (metadata.title || metadata.authorName) {
+        await db
+          .update(resources)
+          .set({
+            title: metadata.title || resource.title,
+            authorName: metadata.authorName || resource.authorName,
+            thumbnailUrl: metadata.thumbnailUrl || resource.thumbnailUrl,
+          })
+          .where(eq(resources.id, resource.id));
+        updated++;
+      }
+    }
+  }
+
+  return successResponse({
+    message: `Updated ${updated} YouTube videos with metadata`,
+    updated,
+    total: youtubeResources.length,
+  });
+});

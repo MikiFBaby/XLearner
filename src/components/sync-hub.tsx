@@ -40,7 +40,33 @@ export function SyncHub({
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [redditUrl, setRedditUrl] = useState("");
   const [addingResource, setAddingResource] = useState(false);
+  const [refreshingMetadata, setRefreshingMetadata] = useState(false);
   const [addStatus, setAddStatus] = useState<{ success: boolean; message: string } | null>(null);
+
+  const handleRefreshYouTubeMetadata = async () => {
+    setRefreshingMetadata(true);
+    try {
+      const res = await fetch("/api/resources", {
+        method: "PATCH",
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setAddStatus({
+          success: true,
+          message: `Updated ${data.data?.updated || 0} videos with titles`,
+        });
+        queryClient.invalidateQueries({ queryKey: ["resources"] });
+      } else {
+        setAddStatus({ success: false, message: "Failed to refresh" });
+      }
+    } catch {
+      setAddStatus({ success: false, message: "Failed to refresh" });
+    } finally {
+      setRefreshingMetadata(false);
+      setTimeout(() => setAddStatus(null), 3000);
+    }
+  };
 
   const handleSync = async (platform: Platform) => {
     setSyncing(platform);
@@ -306,9 +332,28 @@ export function SyncHub({
                     )}
                   </button>
                 </div>
-                <p className="text-xs text-white/40">
-                  Supports: youtube.com, youtu.be links, playlists, and channels
-                </p>
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-white/40">
+                    Supports: youtube.com, youtu.be links
+                  </p>
+                  <button
+                    onClick={handleRefreshYouTubeMetadata}
+                    disabled={refreshingMetadata}
+                    className="text-xs text-red-400 hover:text-red-300 disabled:opacity-50 flex items-center gap-1"
+                  >
+                    {refreshingMetadata ? (
+                      <>
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        Refreshing...
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="h-3 w-3" />
+                        Refresh Titles
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
           )}
