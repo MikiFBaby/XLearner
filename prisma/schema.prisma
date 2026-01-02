@@ -1,0 +1,302 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// User & Authentication Models
+// ============================================================
+
+model User {
+  id              String    @id @default(cuid())
+  email           String?   @unique
+  twitterId       String    @unique
+  twitterUsername String
+  twitterName     String?
+  twitterAvatar   String?
+  accessToken     String    // Encrypted
+  refreshToken    String?   // Encrypted
+  tokenExpiresAt  DateTime?
+  createdAt       DateTime  @default(now())
+  lastSyncAt      DateTime?
+
+  // Relations
+  bookmarks   Bookmark[]
+  courses     Course[]
+  progress    LearningProgress[]
+  quizResults QuizResult[]
+  preferences UserPreferences?
+
+  @@index([twitterId])
+}
+
+model UserPreferences {
+  id                 String  @id @default(cuid())
+  userId             String  @unique
+  dailyGoalMinutes   Int     @default(30)
+  preferredVoice     String  @default("default")
+  playbackSpeed      Float   @default(1.0)
+  emailNotifications Boolean @default(true)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ============================================================
+// Bookmark Models
+// ============================================================
+
+model Bookmark {
+  id                  String    @id @default(cuid())
+  userId              String
+  tweetId             String    @unique
+  tweetText           String    @db.Text
+  tweetAuthorId       String
+  tweetAuthorName     String
+  tweetAuthorHandle   String
+  tweetCreatedAt      DateTime
+  tweetLikes          Int       @default(0)
+  tweetRetweets       Int       @default(0)
+  tweetUrl            String
+  hasMedia            Boolean   @default(false)
+  mediaUrls           String[]  // Array of URLs
+  isThread            Boolean   @default(false)
+  threadId            String?   // Links thread tweets together
+  bookmarkedAt        DateTime  @default(now())
+  lastProcessedAt     DateTime?
+
+  // AI-generated fields
+  summary       String?  @db.Text
+  topics        String[] // ["AI", "Product Design", "Startups"]
+  learningDepth String?  // "quick_insight" | "deep_concept" | "tutorial"
+  keyTakeaways  String[]
+
+  // Relations
+  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  courseModules ModuleBookmark[]
+
+  @@index([userId, bookmarkedAt])
+  @@index([userId, threadId])
+  @@index([topics])
+}
+
+// ============================================================
+// Course Models
+// ============================================================
+
+model Course {
+  id               String    @id @default(cuid())
+  userId           String
+  title            String
+  description      String    @db.Text
+  coverImageUrl    String?
+  estimatedMinutes Int
+  difficultyLevel  String    // "beginner" | "intermediate" | "advanced"
+  topics           String[]
+  status           String    @default("draft") // "draft" | "published" | "archived"
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  publishedAt      DateTime?
+
+  // Relations
+  user     User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  modules  Module[]
+  progress LearningProgress[]
+
+  @@index([userId, status])
+}
+
+model Module {
+  id               String   @id @default(cuid())
+  courseId         String
+  orderIndex       Int
+  title            String
+  description      String?  @db.Text
+  estimatedMinutes Int
+  createdAt        DateTime @default(now())
+
+  // Relations
+  course    Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lessons   Lesson[]
+  bookmarks ModuleBookmark[]
+  quizzes   Quiz[]
+
+  @@unique([courseId, orderIndex])
+  @@index([courseId])
+}
+
+model ModuleBookmark {
+  moduleId   String
+  bookmarkId String
+  orderIndex Int
+  addedAt    DateTime @default(now())
+
+  // Relations
+  module   Module   @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  bookmark Bookmark @relation(fields: [bookmarkId], references: [id], onDelete: Cascade)
+
+  @@id([moduleId, bookmarkId])
+}
+
+model Lesson {
+  id         String   @id @default(cuid())
+  moduleId   String
+  orderIndex Int
+  title      String
+  content    String   @db.Text // Markdown or rich text
+
+  // Media assets
+  audioUrl        String?
+  audioGeneratedAt DateTime?
+  videoPodcastUrl String? // Future: video with transcript overlay
+
+  // Metadata
+  duration  Int?     // seconds
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  module   Module             @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  progress LearningProgress[]
+
+  @@unique([moduleId, orderIndex])
+  @@index([moduleId])
+}
+
+// ============================================================
+// Quiz Models
+// ============================================================
+
+model Quiz {
+  id           String   @id @default(cuid())
+  moduleId     String
+  title        String
+  questions    Json     // Array of question objects
+  passingScore Int      @default(70)
+  createdAt    DateTime @default(now())
+
+  // Relations
+  module  Module       @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  results QuizResult[]
+
+  @@index([moduleId])
+}
+
+model QuizResult {
+  id          String   @id @default(cuid())
+  userId      String
+  quizId      String
+  score       Int
+  answers     Json     // User's answers
+  completedAt DateTime @default(now())
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  quiz Quiz @relation(fields: [quizId], references: [id], onDelete: Cascade)
+
+  @@index([userId, quizId])
+}
+
+// ============================================================
+// Learning Progress Models
+// ============================================================
+
+model LearningProgress {
+  id        String @id @default(cuid())
+  userId    String
+  courseId  String
+  lessonId  String?
+
+  status          String   @default("not_started") // "not_started" | "in_progress" | "completed"
+  progressPercent Int      @default(0)
+  lastPosition    Int      @default(0) // seconds for audio/video
+
+  startedAt      DateTime?
+  completedAt    DateTime?
+  lastAccessedAt DateTime  @default(now())
+
+  // Relations
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lesson Lesson? @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, courseId, lessonId])
+  @@index([userId, courseId])
+}
+
+// ============================================================
+// Background Jobs Models
+// ============================================================
+
+model BackgroundJob {
+  id          String    @id @default(cuid())
+  jobType     String    // "sync_bookmarks" | "generate_course" | "generate_audio"
+  userId      String?
+  status      String    @default("pending") // "pending" | "processing" | "completed" | "failed"
+  payload     Json
+  result      Json?
+  error       String?   @db.Text
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(3)
+  createdAt   DateTime  @default(now())
+  startedAt   DateTime?
+  completedAt DateTime?
+
+  @@index([userId, status])
+  @@index([jobType, status])
+}
+
+// ============================================================
+// Session Models (for NextAuth)
+// ============================================================
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user UserAccount @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String      @id @default(cuid())
+  sessionToken String      @unique
+  userId       String
+  expires      DateTime
+  user         UserAccount @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UserAccount {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  accounts      Account[]
+  sessions      Session[]
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
