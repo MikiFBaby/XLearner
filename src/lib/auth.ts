@@ -85,7 +85,73 @@ export const authOptions: NextAuthOptions = {
         return true;
       }
 
-      // For OAuth providers (Google, Twitter, Facebook), create user if doesn't exist
+      // Handle Twitter OAuth specially (no email provided)
+      if (account?.provider === "twitter" && profile) {
+        const twitterProfile = profile as {
+          data?: {
+            id: string;
+            username: string;
+            name: string;
+            profile_image_url?: string;
+          };
+        };
+
+        if (twitterProfile.data) {
+          try {
+            // Look for existing user by Twitter ID
+            const existingByTwitter = await db
+              .select()
+              .from(users)
+              .where(eq(users.twitterId, twitterProfile.data.id))
+              .limit(1);
+
+            if (existingByTwitter.length > 0) {
+              // User exists with this Twitter account
+              user.id = existingByTwitter[0].id;
+              user.email = existingByTwitter[0].email;
+              user.name = existingByTwitter[0].name;
+
+              // Update Twitter tokens
+              await db
+                .update(users)
+                .set({
+                  twitterAvatar: twitterProfile.data.profile_image_url,
+                  twitterConnectedAt: new Date(),
+                  updatedAt: new Date(),
+                })
+                .where(eq(users.id, existingByTwitter[0].id));
+            } else {
+              // Create new user from Twitter
+              const newUserId = crypto.randomUUID();
+              const twitterEmail = `${twitterProfile.data.username}@twitter.local`;
+
+              await db.insert(users).values({
+                id: newUserId,
+                email: twitterEmail,
+                name: twitterProfile.data.name,
+                image: twitterProfile.data.profile_image_url,
+                twitterId: twitterProfile.data.id,
+                twitterUsername: twitterProfile.data.username,
+                twitterName: twitterProfile.data.name,
+                twitterAvatar: twitterProfile.data.profile_image_url,
+                twitterConnectedAt: new Date(),
+                emailVerified: new Date(),
+                createdAt: new Date(),
+                updatedAt: new Date(),
+              });
+
+              user.id = newUserId;
+              user.email = twitterEmail;
+            }
+            return true;
+          } catch (error) {
+            console.error("Twitter OAuth signIn error:", error);
+            return false;
+          }
+        }
+      }
+
+      // For other OAuth providers (Google, Facebook) that provide email
       if (account && user.email) {
         try {
           const existingUser = await db
@@ -115,32 +181,6 @@ export const authOptions: NextAuthOptions = {
                 .update(users)
                 .set({ image: user.image, updatedAt: new Date() })
                 .where(eq(users.id, existingUser[0].id));
-            }
-          }
-
-          // For Twitter OAuth, also store Twitter-specific data
-          if (account.provider === "twitter" && profile) {
-            const twitterProfile = profile as {
-              data?: {
-                id: string;
-                username: string;
-                name: string;
-                profile_image_url?: string;
-              };
-            };
-
-            if (twitterProfile.data) {
-              await db
-                .update(users)
-                .set({
-                  twitterId: twitterProfile.data.id,
-                  twitterUsername: twitterProfile.data.username,
-                  twitterName: twitterProfile.data.name,
-                  twitterAvatar: twitterProfile.data.profile_image_url,
-                  twitterConnectedAt: new Date(),
-                  updatedAt: new Date(),
-                })
-                .where(eq(users.id, user.id as string));
             }
           }
         } catch (error) {
