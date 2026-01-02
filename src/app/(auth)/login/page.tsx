@@ -1,13 +1,60 @@
 "use client";
 
+import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { BookOpen } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { BookOpen, Loader2, Eye, EyeOff, AlertCircle, CheckCircle2 } from "lucide-react";
 
 export default function LoginPage() {
-  const handleSignIn = () => {
-    signIn("twitter", { callbackUrl: "/dashboard" });
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const registered = searchParams.get("registered");
+  const callbackUrl = searchParams.get("callbackUrl") || "/dashboard";
+
+  const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState("");
+  const [formData, setFormData] = useState({
+    email: "",
+    password: "",
+  });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setIsLoading(true);
+
+    try {
+      const result = await signIn("credentials", {
+        email: formData.email,
+        password: formData.password,
+        redirect: false,
+      });
+
+      if (result?.error) {
+        setError("Invalid email or password");
+        setIsLoading(false);
+        return;
+      }
+
+      router.push(callbackUrl);
+    } catch {
+      setError("Something went wrong. Please try again.");
+      setIsLoading(false);
+    }
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData((prev) => ({
+      ...prev,
+      [e.target.name]: e.target.value,
+    }));
+    setError("");
   };
 
   return (
@@ -24,47 +71,113 @@ export default function LoginPage() {
             Transform your Twitter bookmarks into personalized learning courses
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <Button
-            onClick={handleSignIn}
-            size="lg"
-            className="w-full gap-2"
-          >
-            <svg viewBox="0 0 24 24" className="h-5 w-5 fill-current">
-              <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-            </svg>
-            Sign in with X
-          </Button>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            {registered && (
+              <div className="flex items-center gap-2 rounded-md bg-green-500/10 p-3 text-sm text-green-600">
+                <CheckCircle2 className="h-4 w-4" />
+                Account created successfully! Please sign in.
+              </div>
+            )}
 
-          <div className="text-center text-sm text-muted-foreground">
-            <p>
-              By signing in, you agree to our Terms of Service and Privacy
-              Policy.
+            {error && (
+              <div className="flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+                <AlertCircle className="h-4 w-4" />
+                {error}
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                name="email"
+                type="email"
+                placeholder="you@example.com"
+                value={formData.email}
+                onChange={handleChange}
+                required
+                disabled={isLoading}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="password">Password</Label>
+                <Link
+                  href="/forgot-password"
+                  className="text-xs text-muted-foreground hover:text-primary"
+                >
+                  Forgot password?
+                </Link>
+              </div>
+              <div className="relative">
+                <Input
+                  id="password"
+                  name="password"
+                  type={showPassword ? "text" : "password"}
+                  placeholder="Your password"
+                  value={formData.password}
+                  onChange={handleChange}
+                  required
+                  disabled={isLoading}
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <Button type="submit" size="lg" disabled={isLoading} className="w-full">
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Signing in...
+                </>
+              ) : (
+                "Sign In"
+              )}
+            </Button>
+
+            <p className="text-center text-sm text-muted-foreground">
+              Don&apos;t have an account?{" "}
+              <Link href="/signup" className="font-medium text-primary hover:underline">
+                Sign up
+              </Link>
             </p>
-          </div>
+          </form>
         </CardContent>
       </Card>
 
       <div className="mt-12 grid max-w-3xl gap-8 text-center md:grid-cols-3">
         <div>
           <div className="mb-2 text-3xl">1</div>
-          <h3 className="font-semibold">Sync Bookmarks</h3>
+          <h3 className="font-semibold">Create Account</h3>
           <p className="text-sm text-muted-foreground">
-            Connect your X account and import your bookmarks
+            Sign up and connect your X account
           </p>
         </div>
         <div>
           <div className="mb-2 text-3xl">2</div>
-          <h3 className="font-semibold">AI Analysis</h3>
+          <h3 className="font-semibold">Sync Bookmarks</h3>
           <p className="text-sm text-muted-foreground">
-            Our AI analyzes and categorizes your content
+            Import and analyze your saved tweets
           </p>
         </div>
         <div>
           <div className="mb-2 text-3xl">3</div>
           <h3 className="font-semibold">Learn & Grow</h3>
           <p className="text-sm text-muted-foreground">
-            Get personalized courses with audio lessons
+            Get personalized courses with audio
           </p>
         </div>
       </div>

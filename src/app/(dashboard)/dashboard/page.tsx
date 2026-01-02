@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { getServerSession } from "next-auth";
+import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { users, bookmarks, courses, learningProgress, lessons, modules } from "@/lib/schema";
@@ -19,32 +20,21 @@ import {
   TrendingUp,
 } from "lucide-react";
 import Link from "next/link";
+import { TwitterConnectClient } from "./twitter-connect-client";
 
-async function DashboardStats() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.twitterId) return null;
-
-  const userResult = await db
-    .select()
-    .from(users)
-    .where(eq(users.twitterId, session.user.twitterId))
-    .limit(1);
-
-  const user = userResult[0];
-  if (!user) return null;
-
+async function DashboardStats({ userId }: { userId: string }) {
   const [totalBookmarksResult, processedBookmarksResult, activeCoursesResult, completedLessonsResult] =
     await Promise.all([
-      db.select({ count: count() }).from(bookmarks).where(eq(bookmarks.userId, user.id)),
+      db.select({ count: count() }).from(bookmarks).where(eq(bookmarks.userId, userId)),
       db.select({ count: count() }).from(bookmarks).where(
-        and(eq(bookmarks.userId, user.id), isNotNull(bookmarks.lastProcessedAt))
+        and(eq(bookmarks.userId, userId), isNotNull(bookmarks.lastProcessedAt))
       ),
       db.select({ count: count() }).from(courses).where(
-        and(eq(courses.userId, user.id), eq(courses.status, "published"))
+        and(eq(courses.userId, userId), eq(courses.status, "published"))
       ),
       db.select({ count: count() }).from(learningProgress).where(
         and(
-          eq(learningProgress.userId, user.id),
+          eq(learningProgress.userId, userId),
           eq(learningProgress.status, "completed"),
           isNotNull(learningProgress.lessonId)
         )
@@ -113,19 +103,7 @@ function StatsSkeleton() {
   );
 }
 
-async function CurrentLearning() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.twitterId) return null;
-
-  const userResult = await db
-    .select()
-    .from(users)
-    .where(eq(users.twitterId, session.user.twitterId))
-    .limit(1);
-
-  const user = userResult[0];
-  if (!user) return null;
-
+async function CurrentLearning({ userId }: { userId: string }) {
   const currentProgressResult = await db
     .select({
       id: learningProgress.id,
@@ -142,7 +120,7 @@ async function CurrentLearning() {
     .leftJoin(modules, eq(lessons.moduleId, modules.id))
     .where(
       and(
-        eq(learningProgress.userId, user.id),
+        eq(learningProgress.userId, userId),
         eq(learningProgress.status, "in_progress")
       )
     )
@@ -213,19 +191,7 @@ async function CurrentLearning() {
   );
 }
 
-async function RecentBookmarks() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.twitterId) return null;
-
-  const userResult = await db
-    .select()
-    .from(users)
-    .where(eq(users.twitterId, session.user.twitterId))
-    .limit(1);
-
-  const user = userResult[0];
-  if (!user) return null;
-
+async function RecentBookmarks({ userId }: { userId: string }) {
   const recentBookmarks = await db
     .select({
       id: bookmarks.id,
@@ -236,7 +202,7 @@ async function RecentBookmarks() {
       bookmarkedAt: bookmarks.bookmarkedAt,
     })
     .from(bookmarks)
-    .where(eq(bookmarks.userId, user.id))
+    .where(eq(bookmarks.userId, userId))
     .orderBy(desc(bookmarks.bookmarkedAt))
     .limit(5);
 
@@ -249,14 +215,15 @@ async function RecentBookmarks() {
             Your Bookmarks
           </CardTitle>
           <CardDescription>
-            No bookmarks synced yet. Click the sync button to import your X
-            bookmarks.
+            No bookmarks synced yet. Connect your X account and sync your bookmarks.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Button variant="outline">
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Sync Bookmarks
+          <Button variant="outline" asChild>
+            <Link href="/settings">
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Connect X Account
+            </Link>
           </Button>
         </CardContent>
       </Card>
@@ -307,23 +274,11 @@ async function RecentBookmarks() {
   );
 }
 
-async function TopTopics() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.twitterId) return null;
-
-  const userResult = await db
-    .select()
-    .from(users)
-    .where(eq(users.twitterId, session.user.twitterId))
-    .limit(1);
-
-  const user = userResult[0];
-  if (!user) return null;
-
+async function TopTopics({ userId }: { userId: string }) {
   const bookmarksWithTopics = await db
     .select({ topics: bookmarks.topics })
     .from(bookmarks)
-    .where(eq(bookmarks.userId, user.id));
+    .where(eq(bookmarks.userId, userId));
 
   const topicCounts: Record<string, number> = {};
   bookmarksWithTopics.forEach((b) => {
@@ -368,17 +323,51 @@ async function TopTopics() {
 }
 
 export default async function DashboardPage() {
+  const session = await getServerSession(authOptions);
+
+  if (!session?.user?.id) {
+    redirect("/login");
+  }
+
+  // Get user data from database
+  const userResult = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, session.user.id))
+    .limit(1);
+
+  const user = userResult[0];
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const userName = user.name || session.user.email?.split("@")[0] || "there";
+  const isTwitterConnected = !!user.twitterConnectedAt;
+
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+        <h1 className="text-3xl font-bold tracking-tight">
+          Welcome back, {userName}!
+        </h1>
         <p className="text-muted-foreground">
-          Welcome back! Here&apos;s an overview of your learning journey.
+          Here&apos;s an overview of your learning journey.
         </p>
       </div>
 
+      {/* Twitter Connection Status */}
+      {!isTwitterConnected && (
+        <TwitterConnectClient
+          isConnected={false}
+          twitterUsername={undefined}
+          lastSyncAt={undefined}
+          enableRealtimeSync={false}
+        />
+      )}
+
       <Suspense fallback={<StatsSkeleton />}>
-        <DashboardStats />
+        <DashboardStats userId={user.id} />
       </Suspense>
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -394,9 +383,62 @@ export default async function DashboardPage() {
             </Card>
           }
         >
-          <CurrentLearning />
+          <CurrentLearning userId={user.id} />
         </Suspense>
 
+        {isTwitterConnected && (
+          <Suspense
+            fallback={
+              <Card>
+                <CardHeader>
+                  <Skeleton className="h-6 w-40" />
+                </CardHeader>
+                <CardContent>
+                  <Skeleton className="h-24 w-full" />
+                </CardContent>
+              </Card>
+            }
+          >
+            <TopTopics userId={user.id} />
+          </Suspense>
+        )}
+
+        {!isTwitterConnected && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5" />
+                Get Started
+              </CardTitle>
+              <CardDescription>
+                Connect your X account to unlock all features
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <ul className="space-y-2 text-sm text-muted-foreground">
+                <li className="flex items-center gap-2">
+                  <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+                  Sync your bookmarks automatically
+                </li>
+                <li className="flex items-center gap-2">
+                  <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+                  AI-powered content analysis
+                </li>
+                <li className="flex items-center gap-2">
+                  <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+                  Personalized learning courses
+                </li>
+                <li className="flex items-center gap-2">
+                  <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+                  Audio lessons on the go
+                </li>
+              </ul>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
+      {isTwitterConnected && (
         <Suspense
           fallback={
             <Card>
@@ -404,29 +446,14 @@ export default async function DashboardPage() {
                 <Skeleton className="h-6 w-40" />
               </CardHeader>
               <CardContent>
-                <Skeleton className="h-24 w-full" />
+                <Skeleton className="h-40 w-full" />
               </CardContent>
             </Card>
           }
         >
-          <TopTopics />
+          <RecentBookmarks userId={user.id} />
         </Suspense>
-      </div>
-
-      <Suspense
-        fallback={
-          <Card>
-            <CardHeader>
-              <Skeleton className="h-6 w-40" />
-            </CardHeader>
-            <CardContent>
-              <Skeleton className="h-40 w-full" />
-            </CardContent>
-          </Card>
-        }
-      >
-        <RecentBookmarks />
-      </Suspense>
+      )}
     </div>
   );
 }

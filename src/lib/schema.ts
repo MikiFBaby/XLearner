@@ -23,18 +23,27 @@ export const users = pgTable(
     id: text("id")
       .primaryKey()
       .$defaultFn(() => crypto.randomUUID()),
-    email: text("email").unique(),
-    twitterId: text("twitterId").notNull().unique(),
-    twitterUsername: text("twitterUsername").notNull(),
+    email: text("email").notNull().unique(),
+    password: text("password"), // Hashed password for email auth
+    name: text("name"),
+    image: text("image"),
+    emailVerified: timestamp("emailVerified", { mode: "date" }),
+    // Twitter connection (optional - connected after account creation)
+    twitterId: text("twitterId").unique(),
+    twitterUsername: text("twitterUsername"),
     twitterName: text("twitterName"),
     twitterAvatar: text("twitterAvatar"),
-    accessToken: text("accessToken").notNull(),
+    accessToken: text("accessToken"),
     refreshToken: text("refreshToken"),
     tokenExpiresAt: timestamp("tokenExpiresAt", { mode: "date" }),
+    twitterConnectedAt: timestamp("twitterConnectedAt", { mode: "date" }),
+    // Settings
+    enableRealtimeSync: boolean("enableRealtimeSync").default(false).notNull(),
     createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
     lastSyncAt: timestamp("lastSyncAt", { mode: "date" }),
   },
   (table) => ({
+    emailIdx: index("User_email_idx").on(table.email),
     twitterIdIdx: index("User_twitterId_idx").on(table.twitterId),
   })
 );
