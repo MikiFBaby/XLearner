@@ -51,20 +51,23 @@ export function SyncHub({
         credentials: "include",
       });
       const data = await res.json();
+      // Debug: log full response to browser console
+      console.log("[Refresh Titles Response]", JSON.stringify(data, null, 2));
       if (res.ok) {
         setAddStatus({
           success: true,
-          message: `Updated ${data.data?.updated || 0} videos with titles`,
+          message: `Updated ${data.data?.updated || 0} videos. Check console for debug info.`,
         });
         queryClient.invalidateQueries({ queryKey: ["resources"] });
       } else {
         setAddStatus({ success: false, message: "Failed to refresh" });
       }
-    } catch {
+    } catch (err) {
+      console.error("[Refresh Titles Error]", err);
       setAddStatus({ success: false, message: "Failed to refresh" });
     } finally {
       setRefreshingMetadata(false);
-      setTimeout(() => setAddStatus(null), 3000);
+      setTimeout(() => setAddStatus(null), 5000);
     }
   };
 
