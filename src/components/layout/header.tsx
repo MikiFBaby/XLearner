@@ -27,11 +27,11 @@ export function Header({ onMenuClick }: HeaderProps) {
   const user = session?.user;
 
   return (
-    <header className="sticky top-0 z-40 flex h-16 shrink-0 items-center border-b border-slate-200 bg-white px-4 sm:px-6">
+    <header className="sticky top-0 z-40 flex h-16 shrink-0 items-center border-b border-white/10 bg-[#0a0118]/80 backdrop-blur-xl px-4 sm:px-6">
       {/* Mobile menu button */}
       <button
         type="button"
-        className="-m-2.5 p-2.5 text-slate-500 lg:hidden"
+        className="-m-2.5 p-2.5 text-gray-400 lg:hidden"
         onClick={onMenuClick}
       >
         <span className="sr-only">Open sidebar</span>
@@ -40,10 +40,10 @@ export function Header({ onMenuClick }: HeaderProps) {
 
       {/* Mobile logo */}
       <div className="flex items-center gap-2 lg:hidden ml-2">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
+        <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 to-indigo-600">
           <BookOpen className="h-4 w-4 text-white" />
         </div>
-        <span className="font-semibold text-slate-900">XLearner</span>
+        <span className="font-semibold text-white">XLearner</span>
       </div>
 
       {/* Search bar - centered */}
@@ -53,11 +53,11 @@ export function Header({ onMenuClick }: HeaderProps) {
             <Input
               type="text"
               placeholder="Type to Search..."
-              className="h-10 w-full rounded-lg border-slate-200 bg-slate-50 pl-4 pr-12 text-sm placeholder:text-slate-400 focus:border-primary focus:bg-white focus:ring-primary"
+              className="h-10 w-full rounded-xl border-white/10 bg-white/5 pl-4 pr-12 text-sm text-white placeholder:text-gray-500 focus:border-purple-500 focus:bg-white/10 focus:ring-purple-500"
             />
             <Button
               size="sm"
-              className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 rounded-md bg-primary p-0 hover:bg-primary/90"
+              className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 rounded-lg bg-gradient-to-r from-purple-500 to-indigo-600 p-0 hover:from-purple-600 hover:to-indigo-700 border-0"
             >
               <Search className="h-4 w-4" />
             </Button>
@@ -69,19 +69,19 @@ export function Header({ onMenuClick }: HeaderProps) {
       <div className="flex items-center gap-2 sm:gap-4">
         {/* Notification icons */}
         <div className="hidden sm:flex items-center gap-1">
-          <button className="relative rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700">
+          <button className="relative rounded-lg p-2 text-gray-400 hover:bg-white/5 hover:text-white transition-colors">
             <Bell className="h-5 w-5" />
-            <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-blue-500 text-[10px] font-medium text-white">
+            <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-purple-500 text-[10px] font-medium text-white">
               4
             </span>
           </button>
-          <button className="relative rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700">
+          <button className="relative rounded-lg p-2 text-gray-400 hover:bg-white/5 hover:text-white transition-colors">
             <MessageSquare className="h-5 w-5" />
             <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-orange-500 text-[10px] font-medium text-white">
               2
             </span>
           </button>
-          <button className="relative rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700">
+          <button className="relative rounded-lg p-2 text-gray-400 hover:bg-white/5 hover:text-white transition-colors">
             <HelpCircle className="h-5 w-5" />
             <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-green-500 text-[10px] font-medium text-white">
               1
@@ -90,27 +90,27 @@ export function Header({ onMenuClick }: HeaderProps) {
         </div>
 
         {/* Separator */}
-        <div className="hidden sm:block h-8 w-px bg-slate-200" />
+        <div className="hidden sm:block h-8 w-px bg-white/10" />
 
         {/* User dropdown */}
         {user ? (
           <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>
-              <button className="flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2">
-                <Avatar className="h-9 w-9 ring-2 ring-slate-100">
+              <button className="flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-[#0a0118] transition-colors">
+                <Avatar className="h-9 w-9 ring-2 ring-white/20">
                   <AvatarImage
                     src={user.twitterAvatar || user.image || undefined}
                     alt={user.name || "User"}
                   />
-                  <AvatarFallback className="bg-primary/10 text-primary font-medium">
+                  <AvatarFallback className="bg-gradient-to-br from-purple-500 to-indigo-600 text-white font-medium">
                     {user.name?.charAt(0) || user.email?.charAt(0) || "U"}
                   </AvatarFallback>
                 </Avatar>
                 <div className="hidden text-left lg:block">
-                  <p className="text-sm font-medium text-slate-900">
+                  <p className="text-sm font-medium text-white">
                     {user.name || user.email?.split("@")[0]}
                   </p>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-gray-400">
                     {user.twitterUsername ? `@${user.twitterUsername}` : "Free Plan"}
                   </p>
                 </div>
@@ -119,38 +119,38 @@ export function Header({ onMenuClick }: HeaderProps) {
 
             <DropdownMenu.Portal>
               <DropdownMenu.Content
-                className="z-50 min-w-[200px] overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg animate-in fade-in-0 zoom-in-95"
+                className="z-50 min-w-[200px] overflow-hidden rounded-xl border border-white/10 bg-[#1a0a2e] p-1.5 shadow-xl animate-in fade-in-0 zoom-in-95"
                 align="end"
                 sideOffset={8}
               >
-                <div className="px-3 py-2 border-b border-slate-100 mb-1">
-                  <p className="text-sm font-medium text-slate-900">
+                <div className="px-3 py-2 border-b border-white/10 mb-1">
+                  <p className="text-sm font-medium text-white">
                     {user.name || user.email?.split("@")[0]}
                   </p>
-                  <p className="text-xs text-slate-500">{user.email}</p>
+                  <p className="text-xs text-gray-400">{user.email}</p>
                 </div>
                 <DropdownMenu.Item asChild>
                   <Link
                     href="/settings"
-                    className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none transition-colors hover:bg-slate-100"
+                    className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-300 outline-none transition-colors hover:bg-white/5 hover:text-white"
                   >
-                    <Settings className="h-4 w-4 text-slate-500" />
+                    <Settings className="h-4 w-4 text-gray-400" />
                     Settings
                   </Link>
                 </DropdownMenu.Item>
                 <DropdownMenu.Item asChild>
                   <Link
                     href="/profile"
-                    className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none transition-colors hover:bg-slate-100"
+                    className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-300 outline-none transition-colors hover:bg-white/5 hover:text-white"
                   >
-                    <User className="h-4 w-4 text-slate-500" />
+                    <User className="h-4 w-4 text-gray-400" />
                     Profile
                   </Link>
                 </DropdownMenu.Item>
-                <DropdownMenu.Separator className="my-1 h-px bg-slate-100" />
+                <DropdownMenu.Separator className="my-1 h-px bg-white/10" />
                 <DropdownMenu.Item
                   onClick={() => signOut({ callbackUrl: "/" })}
-                  className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-red-600 outline-none transition-colors hover:bg-red-50"
+                  className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-red-400 outline-none transition-colors hover:bg-red-500/10"
                 >
                   <LogOut className="h-4 w-4" />
                   Sign out
@@ -159,7 +159,7 @@ export function Header({ onMenuClick }: HeaderProps) {
             </DropdownMenu.Portal>
           </DropdownMenu.Root>
         ) : (
-          <Button asChild size="sm">
+          <Button asChild size="sm" className="bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 border-0">
             <Link href="/login">Sign In</Link>
           </Button>
         )}

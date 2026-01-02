@@ -84,15 +84,15 @@ function NavItemComponent({ item, isActive, isExpanded, onToggle }: NavItemProps
           className={cn(
             "group flex w-full items-center justify-between gap-x-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all",
             isExpanded
-              ? "bg-primary/10 text-primary"
-              : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+              ? "bg-purple-500/20 text-purple-400"
+              : "text-gray-400 hover:bg-white/5 hover:text-white"
           )}
         >
           <div className="flex items-center gap-x-3">
             <item.icon
               className={cn(
                 "h-5 w-5 shrink-0",
-                isExpanded ? "text-primary" : "text-slate-400 group-hover:text-slate-600"
+                isExpanded ? "text-purple-400" : "text-gray-500 group-hover:text-gray-300"
               )}
             />
             {item.name}
@@ -100,7 +100,7 @@ function NavItemComponent({ item, isActive, isExpanded, onToggle }: NavItemProps
           <ChevronDown
             className={cn(
               "h-4 w-4 transition-transform duration-200",
-              isExpanded ? "rotate-180 text-primary" : "text-slate-400"
+              isExpanded ? "rotate-180 text-purple-400" : "text-gray-500"
             )}
           />
         </button>
@@ -115,8 +115,8 @@ function NavItemComponent({ item, isActive, isExpanded, onToggle }: NavItemProps
                     className={cn(
                       "block rounded-md px-3 py-2 text-sm transition-colors",
                       isChildActive
-                        ? "font-medium text-primary"
-                        : "text-slate-500 hover:text-slate-900"
+                        ? "font-medium text-purple-400"
+                        : "text-gray-500 hover:text-white"
                     )}
                   >
                     {child.name}
@@ -137,14 +137,14 @@ function NavItemComponent({ item, isActive, isExpanded, onToggle }: NavItemProps
         className={cn(
           "group flex items-center gap-x-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all",
           isActive
-            ? "bg-primary/10 text-primary"
-            : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+            ? "bg-purple-500/20 text-purple-400"
+            : "text-gray-400 hover:bg-white/5 hover:text-white"
         )}
       >
         <item.icon
           className={cn(
             "h-5 w-5 shrink-0",
-            isActive ? "text-primary" : "text-slate-400 group-hover:text-slate-600"
+            isActive ? "text-purple-400" : "text-gray-500 group-hover:text-gray-300"
           )}
         />
         {item.name}
@@ -175,13 +175,13 @@ export function Sidebar() {
 
   return (
     <div className="hidden lg:fixed lg:inset-y-0 lg:z-50 lg:flex lg:w-64 lg:flex-col">
-      <div className="flex grow flex-col overflow-y-auto border-r border-slate-200 bg-white px-4 pb-4">
+      <div className="flex grow flex-col overflow-y-auto border-r border-white/10 bg-[#0a0118]/80 backdrop-blur-xl px-4 pb-4">
         {/* Logo */}
         <div className="flex h-16 shrink-0 items-center gap-2 px-2">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 to-indigo-600">
             <BookOpen className="h-5 w-5 text-white" />
           </div>
-          <span className="text-lg font-semibold text-slate-900">XLearner</span>
+          <span className="text-lg font-semibold text-white">XLearner</span>
         </div>
 
         {/* Main Navigation */}
@@ -203,7 +203,7 @@ export function Sidebar() {
 
             {/* Secondary Navigation */}
             <li>
-              <div className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-slate-400">
+              <div className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-gray-500">
                 More
               </div>
               <ul role="list" className="space-y-1">
@@ -221,7 +221,7 @@ export function Sidebar() {
 
             {/* Help Button */}
             <li className="mt-auto">
-              <Button className="w-full gap-2 bg-primary hover:bg-primary/90">
+              <Button className="w-full gap-2 bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 border-0">
                 <MessageCircle className="h-4 w-4" />
                 Chat with us
               </Button>

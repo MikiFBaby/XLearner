@@ -105,18 +105,26 @@ export const authOptions: NextAuthOptions = {
               .where(eq(users.twitterId, twitterProfile.data.id))
               .limit(1);
 
+            // Calculate token expiration
+            const tokenExpiresAt = account.expires_at
+              ? new Date(account.expires_at * 1000)
+              : new Date(Date.now() + 2 * 60 * 60 * 1000); // 2 hours default
+
             if (existingByTwitter.length > 0) {
               // User exists with this Twitter account
               user.id = existingByTwitter[0].id;
               user.email = existingByTwitter[0].email;
               user.name = existingByTwitter[0].name;
 
-              // Update Twitter tokens
+              // Update Twitter tokens and credentials
               await db
                 .update(users)
                 .set({
                   twitterAvatar: twitterProfile.data.profile_image_url,
                   twitterConnectedAt: new Date(),
+                  accessToken: account.access_token,
+                  refreshToken: account.refresh_token,
+                  tokenExpiresAt: tokenExpiresAt,
                   updatedAt: new Date(),
                 })
                 .where(eq(users.id, existingByTwitter[0].id));
@@ -135,6 +143,9 @@ export const authOptions: NextAuthOptions = {
                 twitterName: twitterProfile.data.name,
                 twitterAvatar: twitterProfile.data.profile_image_url,
                 twitterConnectedAt: new Date(),
+                accessToken: account.access_token,
+                refreshToken: account.refresh_token,
+                tokenExpiresAt: tokenExpiresAt,
                 emailVerified: new Date(),
                 createdAt: new Date(),
                 updatedAt: new Date(),

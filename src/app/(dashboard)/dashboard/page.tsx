@@ -1,25 +1,17 @@
-import { Suspense } from "react";
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { users, bookmarks, courses, learningProgress } from "@/lib/schema";
-import { eq, and, desc, isNotNull, count } from "drizzle-orm";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { eq, and, desc, count } from "drizzle-orm";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
-  AlertCircle,
-  ArrowRight,
   Bookmark,
   BookOpen,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  Clock,
-  ExternalLink,
   GraduationCap,
   Heart,
   Plus,
@@ -41,7 +33,7 @@ function WelcomeBanner({
   stats: { bookmarks: number; courses: number; completed: number };
 }) {
   return (
-    <div className="rounded-2xl bg-gradient-to-r from-blue-600 via-blue-500 to-indigo-500 p-6 text-white">
+    <div className="rounded-2xl bg-gradient-to-r from-purple-600 via-purple-500 to-indigo-500 p-6 text-white">
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
         <div className="flex items-center gap-4">
           <Avatar className="h-14 w-14 ring-4 ring-white/30">
@@ -52,25 +44,25 @@ function WelcomeBanner({
           </Avatar>
           <div>
             <h1 className="text-2xl font-bold">Welcome {userName},</h1>
-            <p className="text-blue-100">We&apos;re here to help. Let&apos;s continue learning!</p>
+            <p className="text-purple-100">We&apos;re here to help. Let&apos;s continue learning!</p>
           </div>
         </div>
 
         <div className="flex gap-3">
           <div className="flex flex-col items-center rounded-xl bg-white/20 backdrop-blur-sm px-5 py-3 min-w-[100px]">
-            <Bookmark className="h-5 w-5 mb-1 text-blue-100" />
+            <Bookmark className="h-5 w-5 mb-1 text-purple-100" />
             <span className="text-2xl font-bold">{stats.bookmarks}</span>
-            <span className="text-xs text-blue-100">Bookmarks</span>
+            <span className="text-xs text-purple-100">Bookmarks</span>
           </div>
           <div className="flex flex-col items-center rounded-xl bg-white/20 backdrop-blur-sm px-5 py-3 min-w-[100px]">
-            <GraduationCap className="h-5 w-5 mb-1 text-blue-100" />
+            <GraduationCap className="h-5 w-5 mb-1 text-purple-100" />
             <span className="text-2xl font-bold">{stats.courses}</span>
-            <span className="text-xs text-blue-100">Courses</span>
+            <span className="text-xs text-purple-100">Courses</span>
           </div>
           <div className="flex flex-col items-center rounded-xl bg-white/20 backdrop-blur-sm px-5 py-3 min-w-[100px]">
-            <CheckCircle2 className="h-5 w-5 mb-1 text-blue-100" />
+            <CheckCircle2 className="h-5 w-5 mb-1 text-purple-100" />
             <span className="text-2xl font-bold">{stats.completed}</span>
-            <span className="text-xs text-blue-100">Completed</span>
+            <span className="text-xs text-purple-100">Completed</span>
           </div>
         </div>
       </div>
@@ -81,21 +73,22 @@ function WelcomeBanner({
 // Featured Content Carousel
 function FeaturedCarousel() {
   return (
-    <div className="relative rounded-2xl overflow-hidden bg-gradient-to-br from-slate-800 to-slate-900 aspect-[2/1]">
-      <div className="absolute inset-0 bg-[url('/placeholder-learning.jpg')] bg-cover bg-center opacity-60" />
-      <div className="absolute inset-0 bg-gradient-to-r from-slate-900/90 via-slate-900/50 to-transparent" />
+    <div className="relative rounded-2xl overflow-hidden bg-gradient-to-br from-[#1a0a2e] to-[#0a0118] aspect-[2/1] border border-white/10">
+      <div className="absolute inset-0 bg-gradient-to-r from-purple-900/30 via-transparent to-indigo-900/20" />
 
       <div className="relative h-full flex flex-col justify-end p-6">
-        <Badge className="w-fit mb-3 bg-blue-500 hover:bg-blue-600">Featured</Badge>
+        <span className="inline-flex items-center rounded-full bg-purple-500/20 px-3 py-1 text-xs font-medium text-purple-300 ring-1 ring-inset ring-purple-500/30 w-fit mb-3">
+          Featured
+        </span>
         <h3 className="text-xl font-bold text-white mb-1">Transform Your Bookmarks Into Knowledge</h3>
-        <p className="text-slate-300 text-sm">Connect your X account to get started with AI-powered learning</p>
+        <p className="text-gray-400 text-sm">Connect your X account to get started with AI-powered learning</p>
       </div>
 
       {/* Navigation dots */}
       <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
-        <button className="h-2 w-2 rounded-full bg-white" />
-        <button className="h-2 w-2 rounded-full bg-white/40" />
-        <button className="h-2 w-2 rounded-full bg-white/40" />
+        <button className="h-2 w-2 rounded-full bg-purple-400" />
+        <button className="h-2 w-2 rounded-full bg-white/30" />
+        <button className="h-2 w-2 rounded-full bg-white/30" />
       </div>
 
       {/* Navigation arrows */}
@@ -114,30 +107,33 @@ function SuggestedItemCard({
   title,
   subtitle,
   icon: Icon,
-  color,
+  gradient,
   href
 }: {
   title: string;
   subtitle: string;
   icon: React.ElementType;
-  color: string;
+  gradient: string;
   href: string;
 }) {
   return (
-    <Card className="group hover:shadow-lg transition-all hover:-translate-y-1 cursor-pointer border-slate-200">
-      <CardContent className="p-5">
-        <div className="flex flex-col items-center text-center">
-          <div className={`mb-4 rounded-xl p-4 ${color}`}>
-            <Icon className="h-8 w-8" />
-          </div>
-          <h3 className="font-semibold text-slate-900 mb-1">{title}</h3>
-          <p className="text-sm text-slate-500 mb-4">{subtitle}</p>
-          <Button variant="outline" size="sm" className="w-full group-hover:bg-primary group-hover:text-white transition-colors" asChild>
-            <Link href={href}>View Details</Link>
-          </Button>
+    <div className="group rounded-2xl bg-white/5 backdrop-blur-sm border border-white/10 p-5 hover:bg-white/10 hover:border-white/20 transition-all hover:-translate-y-1 cursor-pointer">
+      <div className="flex flex-col items-center text-center">
+        <div className={`mb-4 rounded-xl p-4 ${gradient}`}>
+          <Icon className="h-8 w-8 text-white" />
         </div>
-      </CardContent>
-    </Card>
+        <h3 className="font-semibold text-white mb-1">{title}</h3>
+        <p className="text-sm text-gray-400 mb-4">{subtitle}</p>
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full border-white/10 bg-white/5 text-white hover:bg-purple-500 hover:border-purple-500 hover:text-white transition-colors"
+          asChild
+        >
+          <Link href={href}>View Details</Link>
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -162,76 +158,71 @@ function MyItemsSidebar({
   };
 
   return (
-    <Card className="border-slate-200">
-      <CardHeader className="flex flex-row items-center justify-between pb-3">
-        <CardTitle className="text-base font-semibold">My Items</CardTitle>
-        <Button variant="ghost" size="icon" className="h-8 w-8 text-primary">
+    <div className="rounded-2xl bg-white/5 backdrop-blur-sm border border-white/10 p-5">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-base font-semibold text-white">My Items</h3>
+        <Button variant="ghost" size="icon" className="h-8 w-8 text-purple-400 hover:bg-white/10">
           <Plus className="h-4 w-4" />
         </Button>
-      </CardHeader>
-      <CardContent className="pt-0">
-        <div className="space-y-3">
-          {recentBookmarks.length === 0 ? (
-            <p className="text-sm text-slate-500 text-center py-4">No bookmarks yet</p>
-          ) : (
-            recentBookmarks.slice(0, 6).map((bookmark) => (
-              <div key={bookmark.id} className="flex items-start gap-3 group">
-                <div className="flex-shrink-0 mt-0.5">
-                  <div className="h-8 w-8 rounded-lg bg-slate-100 flex items-center justify-center">
-                    <Bookmark className="h-4 w-4 text-slate-600" />
-                  </div>
+      </div>
+      <div className="space-y-3">
+        {recentBookmarks.length === 0 ? (
+          <p className="text-sm text-gray-500 text-center py-4">No bookmarks yet</p>
+        ) : (
+          recentBookmarks.slice(0, 6).map((bookmark) => (
+            <div key={bookmark.id} className="flex items-start gap-3 group">
+              <div className="flex-shrink-0 mt-0.5">
+                <div className="h-8 w-8 rounded-lg bg-white/10 flex items-center justify-center">
+                  <Bookmark className="h-4 w-4 text-gray-400" />
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-slate-900 truncate">
-                    {bookmark.tweetText.slice(0, 50)}...
-                  </p>
-                  <p className="text-xs text-slate-500">{formatTime(bookmark.bookmarkedAt)}</p>
-                </div>
-                <Badge
-                  variant="secondary"
-                  className={`text-xs ${
-                    bookmark.topics && bookmark.topics.length > 0
-                      ? 'bg-green-100 text-green-700'
-                      : 'bg-orange-100 text-orange-700'
-                  }`}
-                >
-                  {bookmark.topics && bookmark.topics.length > 0 ? 'Analyzed' : 'Open'}
-                </Badge>
               </div>
-            ))
-          )}
-        </div>
-        {recentBookmarks.length > 0 && (
-          <div className="mt-4 flex items-center justify-between text-xs text-slate-500">
-            <Link href="/bookmarks" className="text-primary hover:underline">View All</Link>
-            <span>First {Math.min(6, recentBookmarks.length)} of {recentBookmarks.length}</span>
-          </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-white truncate">
+                  {bookmark.tweetText.slice(0, 50)}...
+                </p>
+                <p className="text-xs text-gray-500">{formatTime(bookmark.bookmarkedAt)}</p>
+              </div>
+              <span
+                className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
+                  bookmark.topics && bookmark.topics.length > 0
+                    ? 'bg-green-500/20 text-green-400'
+                    : 'bg-orange-500/20 text-orange-400'
+                }`}
+              >
+                {bookmark.topics && bookmark.topics.length > 0 ? 'Analyzed' : 'Open'}
+              </span>
+            </div>
+          ))
         )}
-      </CardContent>
-    </Card>
+      </div>
+      {recentBookmarks.length > 0 && (
+        <div className="mt-4 flex items-center justify-between text-xs text-gray-500">
+          <Link href="/bookmarks" className="text-purple-400 hover:text-purple-300">View All</Link>
+          <span>First {Math.min(6, recentBookmarks.length)} of {recentBookmarks.length}</span>
+        </div>
+      )}
+    </div>
   );
 }
 
 // My To-Dos Sidebar
 function MyTodosSidebar() {
   return (
-    <Card className="border-slate-200">
-      <CardHeader className="flex flex-row items-center justify-between pb-3">
-        <CardTitle className="text-base font-semibold">My To-Dos</CardTitle>
-        <Button variant="ghost" size="icon" className="h-8 w-8 text-primary">
+    <div className="rounded-2xl bg-white/5 backdrop-blur-sm border border-white/10 p-5">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-base font-semibold text-white">My To-Dos</h3>
+        <Button variant="ghost" size="icon" className="h-8 w-8 text-purple-400 hover:bg-white/10">
           <Plus className="h-4 w-4" />
         </Button>
-      </CardHeader>
-      <CardContent className="pt-0">
-        <div className="flex flex-col items-center justify-center py-8 text-center">
-          <div className="h-12 w-12 rounded-full bg-green-100 flex items-center justify-center mb-3">
-            <CheckCircle2 className="h-6 w-6 text-green-600" />
-          </div>
-          <p className="font-medium text-slate-900">No To-Dos</p>
-          <p className="text-sm text-slate-500">You currently have no To-Dos</p>
+      </div>
+      <div className="flex flex-col items-center justify-center py-8 text-center">
+        <div className="h-12 w-12 rounded-full bg-green-500/20 flex items-center justify-center mb-3">
+          <CheckCircle2 className="h-6 w-6 text-green-400" />
         </div>
-      </CardContent>
-    </Card>
+        <p className="font-medium text-white">No To-Dos</p>
+        <p className="text-sm text-gray-500">You currently have no To-Dos</p>
+      </div>
+    </div>
   );
 }
 
@@ -240,21 +231,49 @@ function TopTopicsSidebar({ topics }: { topics: Array<{ name: string; count: num
   if (topics.length === 0) return null;
 
   return (
-    <Card className="border-slate-200">
-      <CardHeader className="pb-3">
-        <CardTitle className="text-base font-semibold">Top Topics</CardTitle>
-      </CardHeader>
-      <CardContent className="pt-0">
-        <div className="space-y-2">
-          {topics.slice(0, 5).map((topic) => (
-            <div key={topic.name} className="flex items-center justify-between">
-              <span className="text-sm text-slate-700">{topic.name}</span>
-              <Badge variant="secondary" className="text-xs">{topic.count}</Badge>
-            </div>
-          ))}
+    <div className="rounded-2xl bg-white/5 backdrop-blur-sm border border-white/10 p-5">
+      <h3 className="text-base font-semibold text-white mb-4">Top Topics</h3>
+      <div className="space-y-2">
+        {topics.slice(0, 5).map((topic) => (
+          <div key={topic.name} className="flex items-center justify-between">
+            <span className="text-sm text-gray-300">{topic.name}</span>
+            <span className="inline-flex items-center rounded-full bg-purple-500/20 px-2 py-1 text-xs font-medium text-purple-400">
+              {topic.count}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Quick Access Card
+function QuickAccessCard({
+  title,
+  subtitle,
+  icon: Icon,
+  gradient,
+  href
+}: {
+  title: string;
+  subtitle: string;
+  icon: React.ElementType;
+  gradient: string;
+  href: string;
+}) {
+  return (
+    <div className="rounded-2xl bg-white/5 backdrop-blur-sm border border-white/10 p-5 hover:bg-white/10 hover:border-white/20 transition-all cursor-pointer group">
+      <div className="flex flex-col items-center text-center">
+        <div className={`mb-3 h-12 w-12 rounded-xl ${gradient} flex items-center justify-center`}>
+          <Icon className="h-6 w-6 text-white" />
         </div>
-      </CardContent>
-    </Card>
+        <h3 className="font-medium text-white">{title}</h3>
+        <p className="text-xs text-gray-500 mb-3">{subtitle}</p>
+        <Link href={href} className="text-xs text-purple-400 hover:text-purple-300 transition-colors">
+          View details
+        </Link>
+      </div>
+    </div>
   );
 }
 
@@ -349,39 +368,49 @@ export default async function DashboardPage() {
           />
         )}
 
+        {/* Twitter Connected - Show sync button */}
+        {isTwitterConnected && (
+          <TwitterConnectClient
+            isConnected={true}
+            twitterUsername={user.twitterUsername || undefined}
+            lastSyncAt={user.lastSyncAt}
+            enableRealtimeSync={user.enableRealtimeSync}
+          />
+        )}
+
         {/* Featured Carousel */}
         <FeaturedCarousel />
 
         {/* Suggested Items Grid */}
         <div>
-          <h2 className="text-lg font-semibold text-slate-900 mb-4">Suggested for you</h2>
+          <h2 className="text-lg font-semibold text-white mb-4">Suggested for you</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <SuggestedItemCard
               title="Create Course"
               subtitle="From bookmarks"
               icon={GraduationCap}
-              color="bg-blue-100 text-blue-600"
+              gradient="bg-gradient-to-br from-blue-500 to-indigo-600"
               href="/courses/new"
             />
             <SuggestedItemCard
               title="Sync Bookmarks"
               subtitle="Import from X"
               icon={RefreshCw}
-              color="bg-purple-100 text-purple-600"
+              gradient="bg-gradient-to-br from-purple-500 to-pink-600"
               href="/bookmarks"
             />
             <SuggestedItemCard
               title="Browse Topics"
               subtitle="Explore content"
               icon={Sparkles}
-              color="bg-orange-100 text-orange-600"
+              gradient="bg-gradient-to-br from-orange-500 to-red-600"
               href="/topics"
             />
             <SuggestedItemCard
               title="View Insights"
               subtitle="Learning stats"
               icon={TrendingUp}
-              color="bg-green-100 text-green-600"
+              gradient="bg-gradient-to-br from-green-500 to-emerald-600"
               href="/insights"
             />
           </div>
@@ -389,56 +418,36 @@ export default async function DashboardPage() {
 
         {/* Quick Access Grid */}
         <div>
-          <h2 className="text-lg font-semibold text-slate-900 mb-4">Quick Access</h2>
+          <h2 className="text-lg font-semibold text-white mb-4">Quick Access</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Card className="border-slate-200 hover:shadow-md transition-shadow cursor-pointer group">
-              <CardContent className="p-5">
-                <div className="flex flex-col items-center text-center">
-                  <div className="mb-3 h-12 w-12 rounded-xl bg-gradient-to-br from-red-500 to-pink-500 flex items-center justify-center">
-                    <Bookmark className="h-6 w-6 text-white" />
-                  </div>
-                  <h3 className="font-medium text-slate-900">All Bookmarks</h3>
-                  <p className="text-xs text-slate-500 mb-3">{stats.bookmarks} items</p>
-                  <Link href="/bookmarks" className="text-xs text-primary hover:underline">View details</Link>
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="border-slate-200 hover:shadow-md transition-shadow cursor-pointer group">
-              <CardContent className="p-5">
-                <div className="flex flex-col items-center text-center">
-                  <div className="mb-3 h-12 w-12 rounded-xl bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center">
-                    <GraduationCap className="h-6 w-6 text-white" />
-                  </div>
-                  <h3 className="font-medium text-slate-900">My Courses</h3>
-                  <p className="text-xs text-slate-500 mb-3">{stats.courses} courses</p>
-                  <Link href="/courses" className="text-xs text-primary hover:underline">View details</Link>
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="border-slate-200 hover:shadow-md transition-shadow cursor-pointer group">
-              <CardContent className="p-5">
-                <div className="flex flex-col items-center text-center">
-                  <div className="mb-3 h-12 w-12 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
-                    <BookOpen className="h-6 w-6 text-white" />
-                  </div>
-                  <h3 className="font-medium text-slate-900">Explore</h3>
-                  <p className="text-xs text-slate-500 mb-3">Discover content</p>
-                  <Link href="/explore" className="text-xs text-primary hover:underline">View details</Link>
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="border-slate-200 hover:shadow-md transition-shadow cursor-pointer group">
-              <CardContent className="p-5">
-                <div className="flex flex-col items-center text-center">
-                  <div className="mb-3 h-12 w-12 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
-                    <Heart className="h-6 w-6 text-white" />
-                  </div>
-                  <h3 className="font-medium text-slate-900">Favorites</h3>
-                  <p className="text-xs text-slate-500 mb-3">Saved items</p>
-                  <Link href="/bookmarks/favorites" className="text-xs text-primary hover:underline">View details</Link>
-                </div>
-              </CardContent>
-            </Card>
+            <QuickAccessCard
+              title="All Bookmarks"
+              subtitle={`${stats.bookmarks} items`}
+              icon={Bookmark}
+              gradient="bg-gradient-to-br from-red-500 to-pink-500"
+              href="/bookmarks"
+            />
+            <QuickAccessCard
+              title="My Courses"
+              subtitle={`${stats.courses} courses`}
+              icon={GraduationCap}
+              gradient="bg-gradient-to-br from-green-500 to-emerald-500"
+              href="/courses"
+            />
+            <QuickAccessCard
+              title="Explore"
+              subtitle="Discover content"
+              icon={BookOpen}
+              gradient="bg-gradient-to-br from-blue-500 to-cyan-500"
+              href="/explore"
+            />
+            <QuickAccessCard
+              title="Favorites"
+              subtitle="Saved items"
+              icon={Heart}
+              gradient="bg-gradient-to-br from-amber-500 to-orange-500"
+              href="/bookmarks/favorites"
+            />
           </div>
         </div>
       </div>
