@@ -1,20 +1,14 @@
-import { Pool, neonConfig } from "@neondatabase/serverless";
-import { drizzle } from "drizzle-orm/neon-serverless";
+import { neon } from "@neondatabase/serverless";
+import { drizzle } from "drizzle-orm/neon-http";
 import * as schema from "./schema";
-import ws from "ws";
-
-// Configure WebSocket for local development
-neonConfig.webSocketConstructor = ws;
 
 const globalForDb = globalThis as unknown as {
   db: ReturnType<typeof drizzle<typeof schema>> | undefined;
-  pool: Pool | undefined;
 };
 
 function createDb() {
-  const connectionString = process.env.DATABASE_URL!;
-  const pool = new Pool({ connectionString });
-  return drizzle(pool, { schema });
+  const sql = neon(process.env.DATABASE_URL!);
+  return drizzle(sql, { schema });
 }
 
 export const db = globalForDb.db ?? createDb();
