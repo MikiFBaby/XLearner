@@ -1,10 +1,17 @@
 import { NextAuthOptions } from "next-auth";
 import TwitterProvider from "next-auth/providers/twitter";
-import { PrismaAdapter } from "@auth/prisma-adapter";
-import { prisma } from "./db";
+import { DrizzleAdapter } from "@auth/drizzle-adapter";
+import { db } from "./db";
+import { eq } from "drizzle-orm";
+import { users, userAccounts, accounts, sessions, verificationTokens } from "./schema";
 
 export const authOptions: NextAuthOptions = {
-  adapter: PrismaAdapter(prisma) as NextAuthOptions["adapter"],
+  adapter: DrizzleAdapter(db, {
+    usersTable: userAccounts,
+    accountsTable: accounts,
+    sessionsTable: sessions,
+    verificationTokensTable: verificationTokens,
+  }) as NextAuthOptions["adapter"],
   providers: [
     TwitterProvider({
       clientId: process.env.TWITTER_CLIENT_ID!,
@@ -31,19 +38,28 @@ export const authOptions: NextAuthOptions = {
 
         if (twitterProfile.data) {
           // Create or update the main User record (separate from NextAuth UserAccount)
-          await prisma.user.upsert({
-            where: { twitterId: twitterProfile.data.id },
-            update: {
-              twitterUsername: twitterProfile.data.username,
-              twitterName: twitterProfile.data.name,
-              twitterAvatar: twitterProfile.data.profile_image_url,
-              accessToken: account.access_token || "",
-              refreshToken: account.refresh_token,
-              tokenExpiresAt: account.expires_at
-                ? new Date(account.expires_at * 1000)
-                : null,
-            },
-            create: {
+          const existingUser = await db
+            .select()
+            .from(users)
+            .where(eq(users.twitterId, twitterProfile.data.id))
+            .limit(1);
+
+          if (existingUser.length > 0) {
+            await db
+              .update(users)
+              .set({
+                twitterUsername: twitterProfile.data.username,
+                twitterName: twitterProfile.data.name,
+                twitterAvatar: twitterProfile.data.profile_image_url,
+                accessToken: account.access_token || "",
+                refreshToken: account.refresh_token,
+                tokenExpiresAt: account.expires_at
+                  ? new Date(account.expires_at * 1000)
+                  : null,
+              })
+              .where(eq(users.twitterId, twitterProfile.data.id));
+          } else {
+            await db.insert(users).values({
               twitterId: twitterProfile.data.id,
               twitterUsername: twitterProfile.data.username,
               twitterName: twitterProfile.data.name,
@@ -54,8 +70,8 @@ export const authOptions: NextAuthOptions = {
               tokenExpiresAt: account.expires_at
                 ? new Date(account.expires_at * 1000)
                 : null,
-            },
-          });
+            });
+          }
         }
       }
       return true;
@@ -84,18 +100,21 @@ export const authOptions: NextAuthOptions = {
 
         // Get the full user record
         if (token.twitterId) {
-          const user = await prisma.user.findUnique({
-            where: { twitterId: token.twitterId as string },
-            select: {
-              id: true,
-              twitterId: true,
-              twitterUsername: true,
-              twitterName: true,
-              twitterAvatar: true,
-              lastSyncAt: true,
-            },
-          });
-          if (user) {
+          const userResult = await db
+            .select({
+              id: users.id,
+              twitterId: users.twitterId,
+              twitterUsername: users.twitterUsername,
+              twitterName: users.twitterName,
+              twitterAvatar: users.twitterAvatar,
+              lastSyncAt: users.lastSyncAt,
+            })
+            .from(users)
+            .where(eq(users.twitterId, token.twitterId as string))
+            .limit(1);
+
+          if (userResult.length > 0) {
+            const user = userResult[0];
             (session.user as typeof user) = {
               ...session.user,
               ...user,
