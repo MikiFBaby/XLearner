@@ -1,8 +1,10 @@
 import { NextRequest } from "next/server";
+import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { resources } from "@/lib/schema";
 import { eq, and, desc, count } from "drizzle-orm";
+import { authOptions } from "@/lib/auth";
 import {
   successResponse,
   paginatedResponse,
@@ -48,6 +50,10 @@ function extractRedditInfo(url: string): { subreddit?: string } {
 
 // POST /api/resources - Add a new resource
 export const POST = withErrorHandler(async (request: NextRequest) => {
+  // Debug: Check session directly
+  const session = await getServerSession(authOptions);
+  console.log("Resources API - Session:", JSON.stringify(session, null, 2));
+
   const user = await requireAuth();
   const body = await validateBody(request, addResourceSchema);
 

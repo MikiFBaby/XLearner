@@ -61,6 +61,7 @@ export function SyncHub({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: url.trim() }),
+        credentials: "include",
       });
 
       const data = await res.json();
