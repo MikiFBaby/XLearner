@@ -119,7 +119,7 @@ export function getPlaceholderImage(seed: string, width = 400, height = 300): st
  * Image generation configuration
  */
 export interface ImageGenerationConfig {
-  provider: 'openai' | 'stability' | 'replicate' | 'fal';
+  provider: 'openai' | 'stability' | 'replicate' | 'fal' | 'gemini';
   apiKey: string;
   model?: string;
 }
@@ -141,6 +141,8 @@ export async function generateImage(
         return await generateWithReplicate(prompt, config.apiKey, config.model);
       case 'fal':
         return await generateWithFal(prompt, config.apiKey, config.model);
+      case 'gemini':
+        return await generateWithGemini(prompt, config.apiKey, config.model);
       default:
         return { url: '', error: 'Unknown provider' };
     }
@@ -274,6 +276,90 @@ async function generateWithFal(prompt: string, apiKey: string, model = 'fal-ai/f
 
   const data = await response.json();
   return { url: data.images?.[0]?.url || '' };
+}
+
+async function generateWithGemini(prompt: string, apiKey: string, model = 'imagen-3.0-generate-002'): Promise<{ url: string; error?: string }> {
+  // Google's Imagen 3 via Gemini API
+  // Using the generativelanguage API endpoint for image generation
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:predict?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        instances: [
+          {
+            prompt: `Create a visually appealing thumbnail image for: ${prompt}. Style: modern, clean, educational, vibrant colors.`,
+          },
+        ],
+        parameters: {
+          sampleCount: 1,
+          aspectRatio: '16:9',
+          safetyFilterLevel: 'block_few',
+          personGeneration: 'allow_adult',
+        },
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    // Try alternative Vertex AI endpoint format
+    const altResponse = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  text: `Generate an image: Create a visually appealing thumbnail image for: ${prompt}. Style: modern, clean, educational.`,
+                },
+              ],
+            },
+          ],
+          generationConfig: {
+            responseModalities: ['image', 'text'],
+            responseMimeType: 'image/png',
+          },
+        }),
+      }
+    );
+
+    if (!altResponse.ok) {
+      const error = await altResponse.json().catch(() => ({}));
+      return { url: '', error: error.error?.message || 'Gemini API error' };
+    }
+
+    const altData = await altResponse.json();
+    // Extract image from response
+    const imagePart = altData.candidates?.[0]?.content?.parts?.find(
+      (p: any) => p.inlineData?.mimeType?.startsWith('image/')
+    );
+    if (imagePart?.inlineData?.data) {
+      return { url: `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}` };
+    }
+    return { url: '', error: 'No image in response' };
+  }
+
+  const data = await response.json();
+
+  // Handle Imagen response format
+  if (data.predictions?.[0]?.bytesBase64Encoded) {
+    return { url: `data:image/png;base64,${data.predictions[0].bytesBase64Encoded}` };
+  }
+
+  // Handle alternative response formats
+  if (data.predictions?.[0]?.image) {
+    return { url: data.predictions[0].image };
+  }
+
+  return { url: '', error: 'Unexpected response format' };
 }
 
 /**
