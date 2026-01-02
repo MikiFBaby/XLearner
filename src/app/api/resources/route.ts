@@ -74,6 +74,8 @@ Tags: ${tags?.slice(0, 10).join(', ') || 'None'}
 Respond in JSON format only:
 {"summary": "...", "skills": ["skill1", "skill2", "skill3"]}`;
 
+    console.log('[Gemini] Calling API for:', title?.slice(0, 40));
+
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`,
       {
@@ -90,7 +92,8 @@ Respond in JSON format only:
     );
 
     if (!response.ok) {
-      console.error('Gemini API error:', await response.text());
+      const errorText = await response.text();
+      console.error('[Gemini] API error:', errorText);
       return {
         summary: generateBasicSummary(title, description),
         skills: extractBasicSkills(tags, title),
@@ -99,15 +102,18 @@ Respond in JSON format only:
 
     const data = await response.json();
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    console.log('[Gemini] Response text:', text?.slice(0, 100));
 
     // Parse JSON from response
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       const parsed = JSON.parse(jsonMatch[0]);
-      return {
+      const result = {
         summary: parsed.summary?.slice(0, 200) || generateBasicSummary(title, description),
         skills: Array.isArray(parsed.skills) ? parsed.skills.slice(0, 5) : extractBasicSkills(tags, title),
       };
+      console.log('[Gemini] Parsed result:', result);
+      return result;
     }
   } catch (error) {
     console.error('Error calling Gemini API:', error);
@@ -393,6 +399,12 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     .offset((page - 1) * pageSize)
     .limit(pageSize);
 
+  // Debug: log first result
+  if (results.length > 0) {
+    const r = results[0];
+    console.log(`[GET] First resource: authorHandle=${r.authorHandle?.slice(0, 50)}, summary=${r.summary?.slice(0, 50)}, keyTakeaways=${r.keyTakeaways?.length || 0}`);
+  }
+
   return paginatedResponse(results, page, pageSize, total);
 });
 
@@ -414,8 +426,14 @@ export const PATCH = withErrorHandler(async (_request: NextRequest) => {
   let updated = 0;
   for (const resource of youtubeResources) {
     // Update if missing title, author, profile image, summary, or skills
-    if (!resource.title || resource.title === resource.url || !resource.authorName || !resource.authorHandle || !resource.summary || !resource.keyTakeaways?.length) {
+    const needsUpdate = !resource.title || resource.title === resource.url || !resource.authorName || !resource.authorHandle || !resource.summary || !resource.keyTakeaways?.length;
+
+    console.log(`[PATCH] Resource ${resource.id}: needsUpdate=${needsUpdate}, title=${resource.title?.slice(0, 30)}, summary=${resource.summary?.slice(0, 30)}, skills=${resource.keyTakeaways?.length || 0}`);
+
+    if (needsUpdate) {
       const metadata = await fetchYouTubeMetadata(resource.url);
+
+      console.log(`[PATCH] Fetched metadata: summary=${metadata.summary?.slice(0, 50)}, skills=${metadata.skills?.length || 0}, authorProfileImage=${metadata.authorProfileImage?.slice(0, 50)}`);
 
       if (metadata.title || metadata.authorName || metadata.authorProfileImage) {
         await db
@@ -433,6 +451,7 @@ export const PATCH = withErrorHandler(async (_request: NextRequest) => {
           })
           .where(eq(resources.id, resource.id));
         updated++;
+        console.log(`[PATCH] Updated resource ${resource.id}`);
       }
     }
   }
