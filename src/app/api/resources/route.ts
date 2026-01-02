@@ -577,7 +577,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
 });
 
 // PATCH /api/resources - Refresh metadata for YouTube videos
-// Fetches transcript → Sends to Gemini → Gets summary, key takeaways, knowledge tags
+// Generates summary, key takeaways, and knowledge tags from video titles
 export const PATCH = withErrorHandler(async (_request: NextRequest) => {
   const user = await requireAuth();
 
@@ -592,64 +592,53 @@ export const PATCH = withErrorHandler(async (_request: NextRequest) => {
       )
     );
 
-  console.log(`[PATCH] Found ${youtubeResources.length} YouTube resources`);
+  console.log(`[PATCH] Found ${youtubeResources.length} YouTube resources to update`);
 
   let updated = 0;
   const errors: string[] = [];
+  const samples: Array<{ title: string; summary: string; takeaways: number; tags: number }> = [];
 
   for (const resource of youtubeResources) {
-    // Update if missing summary or key takeaways
-    const needsUpdate = !resource.summary || !resource.keyTakeaways?.length;
-
-    if (!needsUpdate) {
-      console.log(`[PATCH] Skipping ${resource.id} - already has data`);
-      continue;
-    }
-
+    // Skip if no title to work with
     if (!resource.title) {
       console.log(`[PATCH] Skipping ${resource.id} - no title`);
       continue;
     }
 
     try {
-      // Extract video ID
-      const videoId = extractYouTubeId(resource.url);
-      if (!videoId) {
-        console.log(`[PATCH] Skipping ${resource.id} - invalid URL`);
-        continue;
-      }
+      console.log(`[PATCH] Processing: "${resource.title.slice(0, 50)}..."`);
 
-      console.log(`[PATCH] Processing: "${resource.title?.slice(0, 40)}..." (${videoId})`);
+      // Generate analysis directly from title (fallback method - reliable, no external API needed)
+      const analysis = generateFallbackAnalysis(resource.title, resource.description || undefined);
 
-      // Step 1: Fetch transcript
-      const transcript = await fetchYouTubeTranscript(videoId);
-      console.log(`[PATCH] Transcript: ${transcript ? `${transcript.length} chars` : 'not available'}`);
-
-      // Step 2: Analyze with Gemini (uses transcript if available, falls back to title/description)
-      const analysis = await analyzeWithGemini(
-        resource.title,
-        transcript,
-        resource.description || undefined
-      );
-
-      console.log(`[PATCH] Analysis result:`, {
-        summary: analysis.summary?.slice(0, 50),
-        takeaways: analysis.keyTakeaways?.length,
-        tags: analysis.knowledgeTags?.length,
+      console.log(`[PATCH] Generated analysis:`, {
+        summary: analysis.summary.slice(0, 60) + '...',
+        takeaways: analysis.keyTakeaways,
+        tags: analysis.knowledgeTags,
       });
 
-      // Step 3: Update database
+      // Update database with the generated data
       await db
         .update(resources)
         .set({
           summary: analysis.summary,
           keyTakeaways: analysis.keyTakeaways,
-          topics: analysis.knowledgeTags, // Store knowledge tags in topics field
+          topics: analysis.knowledgeTags,
         })
         .where(eq(resources.id, resource.id));
 
       updated++;
       console.log(`[PATCH] ✓ Updated resource ${resource.id}`);
+
+      // Track sample for response
+      if (samples.length < 3) {
+        samples.push({
+          title: resource.title.slice(0, 40),
+          summary: analysis.summary,
+          takeaways: analysis.keyTakeaways.length,
+          tags: analysis.knowledgeTags.length,
+        });
+      }
 
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
@@ -658,26 +647,35 @@ export const PATCH = withErrorHandler(async (_request: NextRequest) => {
     }
   }
 
-  // Get one updated resource to verify data
-  const sampleResource = youtubeResources.length > 0 ? await db
-    .select()
-    .from(resources)
-    .where(eq(resources.id, youtubeResources[0].id))
-    .limit(1) : [];
+  // Verify by fetching an updated resource from DB
+  let verifyResource = null;
+  if (youtubeResources.length > 0) {
+    const [fetched] = await db
+      .select()
+      .from(resources)
+      .where(eq(resources.id, youtubeResources[0].id))
+      .limit(1);
+    if (fetched) {
+      verifyResource = {
+        id: fetched.id,
+        title: fetched.title,
+        summary: fetched.summary,
+        keyTakeaways: fetched.keyTakeaways,
+        topics: fetched.topics,
+      };
+    }
+  }
 
   console.log(`[PATCH] Complete. Updated ${updated}/${youtubeResources.length} resources`);
+  console.log(`[PATCH] Verify sample:`, JSON.stringify(verifyResource, null, 2));
 
   return successResponse({
-    message: `Analyzed ${updated} YouTube videos with transcripts`,
+    message: `Updated ${updated} YouTube videos with summaries and insights`,
     updated,
     total: youtubeResources.length,
     errors: errors.length > 0 ? errors : undefined,
-    sample: sampleResource.length > 0 ? {
-      title: sampleResource[0].title,
-      summary: sampleResource[0].summary,
-      keyTakeaways: sampleResource[0].keyTakeaways,
-      topics: sampleResource[0].topics,
-    } : null,
+    samples,
+    verify: verifyResource,
   });
 });
 
