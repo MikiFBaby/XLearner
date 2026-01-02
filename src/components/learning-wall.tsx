@@ -186,9 +186,12 @@ function ResourceCard({
 }) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [imageError, setImageError] = useState(false);
+  const [generatingImage, setGeneratingImage] = useState(false);
+  const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
 
-  const mediaUrl = resource.mediaUrls?.[0] || resource.thumbnailUrl;
-  const hasValidMedia = (resource.hasMedia && mediaUrl && !imageError) || resource.thumbnailUrl;
+  const sourceMediaUrl = resource.mediaUrls?.[0] || resource.thumbnailUrl;
+  const mediaUrl = generatedImageUrl || sourceMediaUrl;
+  const hasValidMedia = ((resource.hasMedia && mediaUrl) || resource.thumbnailUrl || generatedImageUrl) && !imageError;
 
   // Generate gradient placeholder
   const getPlaceholderGradient = () => {
@@ -207,7 +210,30 @@ function ResourceCard({
     return gradients[Math.abs(hash) % gradients.length];
   };
 
+  const handleGenerateImage = async () => {
+    setGeneratingImage(true);
+    try {
+      const res = await fetch(`/api/bookmarks/${resource.id}/generate-image`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (data.success && data.data?.imageUrl) {
+        setGeneratedImageUrl(data.data.imageUrl);
+        setImageError(false);
+      }
+    } catch (error) {
+      console.error("Failed to generate image:", error);
+    } finally {
+      setGeneratingImage(false);
+    }
+  };
+
   const handleAction = async (action: string) => {
+    if (action === "generateImage") {
+      await handleGenerateImage();
+      return;
+    }
+
     setIsProcessing(true);
     try {
       await onAiAction(action, resource.id);
@@ -275,14 +301,30 @@ function ResourceCard({
           />
         ) : (
           <div className={`w-full h-full bg-gradient-to-br ${getPlaceholderGradient()} flex items-center justify-center`}>
-            <div className="text-center text-white/60 p-4">
-              <ImageIcon className="h-10 w-10 mx-auto mb-2 opacity-40" />
-            </div>
+            <button
+              onClick={handleGenerateImage}
+              disabled={generatingImage}
+              className="text-center text-white/80 p-4 hover:scale-105 transition-transform"
+            >
+              {generatingImage ? (
+                <>
+                  <Loader2 className="h-10 w-10 mx-auto mb-2 animate-spin" />
+                  <p className="text-xs font-medium">Generating...</p>
+                </>
+              ) : (
+                <>
+                  <Wand2 className="h-10 w-10 mx-auto mb-2 opacity-60" />
+                  <p className="text-xs font-medium opacity-80">Click to generate image</p>
+                </>
+              )}
+            </button>
           </div>
         )}
 
-        {/* Overlays */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+        {/* Overlays - only show when there's media */}
+        {hasValidMedia && (
+          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent pointer-events-none" />
+        )}
 
         {/* Platform Badge */}
         <div className="absolute top-3 left-3">
