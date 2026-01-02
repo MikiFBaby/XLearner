@@ -5,7 +5,6 @@ import { eq } from "drizzle-orm";
 import { users } from "./schema";
 
 export const authOptions: NextAuthOptions = {
-  // No adapter needed - we're using JWT sessions and managing users ourselves
   providers: [
     TwitterProvider({
       clientId: process.env.TWITTER_CLIENT_ID!,
@@ -20,19 +19,26 @@ export const authOptions: NextAuthOptions = {
   ],
   callbacks: {
     async signIn({ account, profile }) {
-      if (account?.provider === "twitter" && profile) {
-        const twitterProfile = profile as {
-          data?: {
-            id: string;
-            username: string;
-            name: string;
-            profile_image_url?: string;
-          };
-        };
+      // Log for debugging
+      console.log("=== SIGN IN CALLBACK ===");
+      console.log("Provider:", account?.provider);
+      console.log("Profile received:", JSON.stringify(profile, null, 2));
 
-        if (twitterProfile.data) {
-          try {
-            // Create or update the User record
+      // Always allow sign-in - we'll handle user creation separately
+      if (account?.provider === "twitter" && profile) {
+        try {
+          const twitterProfile = profile as {
+            data?: {
+              id: string;
+              username: string;
+              name: string;
+              profile_image_url?: string;
+            };
+          };
+
+          if (twitterProfile.data) {
+            console.log("Twitter data:", twitterProfile.data);
+
             const existingUser = await db
               .select()
               .from(users)
@@ -53,6 +59,7 @@ export const authOptions: NextAuthOptions = {
                     : null,
                 })
                 .where(eq(users.twitterId, twitterProfile.data.id));
+              console.log("User updated");
             } else {
               await db.insert(users).values({
                 twitterId: twitterProfile.data.id,
@@ -65,16 +72,21 @@ export const authOptions: NextAuthOptions = {
                   ? new Date(account.expires_at * 1000)
                   : null,
               });
+              console.log("New user created");
             }
-          } catch (error) {
-            console.error("Error saving user:", error);
-            // Still allow sign-in even if DB save fails
           }
+        } catch (error) {
+          console.error("Error in signIn callback:", error);
+          // Don't fail sign-in due to DB error
         }
       }
+
+      console.log("Sign in allowed");
       return true;
     },
     async jwt({ token, account, profile }) {
+      console.log("=== JWT CALLBACK ===");
+
       if (account && profile) {
         const twitterProfile = profile as {
           data?: {
@@ -84,12 +96,14 @@ export const authOptions: NextAuthOptions = {
             profile_image_url?: string;
           };
         };
+
         if (twitterProfile.data) {
           token.twitterId = twitterProfile.data.id;
           token.twitterUsername = twitterProfile.data.username;
           token.twitterName = twitterProfile.data.name;
           token.twitterAvatar = twitterProfile.data.profile_image_url;
           token.accessToken = account.access_token;
+          console.log("Token updated with Twitter data");
         }
       }
       return token;
@@ -101,14 +115,10 @@ export const authOptions: NextAuthOptions = {
         session.user.twitterName = token.twitterName as string;
         session.user.twitterAvatar = token.twitterAvatar as string;
 
-        // Try to get additional user data from DB
         if (token.twitterId) {
           try {
             const userResult = await db
-              .select({
-                id: users.id,
-                lastSyncAt: users.lastSyncAt,
-              })
+              .select({ id: users.id, lastSyncAt: users.lastSyncAt })
               .from(users)
               .where(eq(users.twitterId, token.twitterId as string))
               .limit(1);
@@ -118,7 +128,7 @@ export const authOptions: NextAuthOptions = {
               session.user.lastSyncAt = userResult[0].lastSyncAt;
             }
           } catch (error) {
-            console.error("Error fetching user data:", error);
+            console.error("Session callback DB error:", error);
           }
         }
       }
@@ -131,11 +141,11 @@ export const authOptions: NextAuthOptions = {
   },
   session: {
     strategy: "jwt",
-    maxAge: 30 * 24 * 60 * 60, // 30 days
+    maxAge: 30 * 24 * 60 * 60,
   },
+  debug: true,
 };
 
-// Type augmentation for NextAuth
 declare module "next-auth" {
   interface Session {
     user: {
