@@ -390,7 +390,7 @@ export function ResourceGrid({ columns = 4, rows = 4 }: ResourceGridProps) {
       title: b.summary || b.tweetText?.slice(0, 100) || "",
       description: b.tweetText || "",
       platform: "twitter" as Platform,
-      category: detectCategory(b.topics || []),
+      category: detectCategory(b.topics || [], `${b.tweetText || ''} ${b.tweetAuthorName || ''} ${b.summary || ''}`),
       thumbnailUrl: hasYouTubeLink
         ? `https://img.youtube.com/vi/${youtubeMatch[1]}/mqdefault.jpg`
         : b.mediaUrls?.[0],
@@ -414,7 +414,7 @@ export function ResourceGrid({ columns = 4, rows = 4 }: ResourceGridProps) {
     title: r.title || r.url,
     description: r.description || "",
     platform: r.platform as Platform,
-    category: detectCategory(r.topics || []),
+    category: detectCategory(r.topics || [], `${r.title || ''} ${r.description || ''} ${r.authorName || ''}`),
     thumbnailUrl: r.thumbnailUrl || (r.platform === "youtube" ? getYouTubeThumbnail(r.url) : null),
     mediaUrls: r.thumbnailUrl ? [r.thumbnailUrl] : undefined,
     hasMedia: !!r.thumbnailUrl || r.platform === "youtube",
@@ -592,10 +592,12 @@ export function ResourceGrid({ columns = 4, rows = 4 }: ResourceGridProps) {
   );
 }
 
-// Helper to detect category from topics
-function detectCategory(topics: string[]): Category {
+// Helper to detect category from topics and content
+function detectCategory(topics: string[], contentText?: string): Category {
+  // Combine topics and content for analysis
   const topicsLower = topics.map(t => t.toLowerCase());
-  const topicsText = topicsLower.join(' ');
+  const contentLower = (contentText || '').toLowerCase();
+  const allText = [...topicsLower, contentLower].join(' ');
 
   // Tech keywords - expanded list
   const techKeywords = [
@@ -604,14 +606,17 @@ function detectCategory(topics: string[]): Category {
     "engineering", "algorithm", "frontend", "backend", "fullstack", "machine learning", "deep learning",
     "neural", "crypto", "blockchain", "cybersecurity", "security", "hacking", "linux", "docker",
     "kubernetes", "aws", "azure", "gcp", "mobile", "ios", "android", "rust", "golang", "java",
-    "c++", "swift", "kotlin", "flutter", "nextjs", "vue", "angular", "svelte", "tech", "technology"
+    "c++", "swift", "kotlin", "flutter", "nextjs", "vue", "angular", "svelte", "tech", "technology",
+    "llm", "gpt", "openai", "anthropic", "claude", "chatgpt", "langchain", "vector", "embedding",
+    "css", "html", "sql", "nosql", "mongodb", "postgres", "redis", "graphql", "rest", "serverless"
   ];
 
   // Science keywords
   const scienceKeywords = [
     "science", "physics", "biology", "chemistry", "research", "math", "mathematics", "statistics",
     "quantum", "astronomy", "space", "nasa", "medicine", "health", "neuroscience", "psychology",
-    "genetics", "evolution", "climate", "environment", "ecology", "geology", "scientific"
+    "genetics", "evolution", "climate", "environment", "ecology", "geology", "scientific",
+    "experiment", "hypothesis", "theory", "discovery", "laboratory", "study", "journal"
   ];
 
   // Business keywords
@@ -619,39 +624,35 @@ function detectCategory(topics: string[]): Category {
     "business", "startup", "marketing", "finance", "investing", "entrepreneur", "leadership",
     "management", "strategy", "growth", "revenue", "sales", "product", "market", "economy",
     "money", "stocks", "trading", "venture", "vc", "founder", "ceo", "saas", "b2b", "b2c",
-    "ecommerce", "pricing", "negotiation", "career", "job", "hiring", "productivity"
+    "ecommerce", "pricing", "negotiation", "career", "job", "hiring", "productivity",
+    "roi", "kpi", "profit", "customer", "client", "deal", "pitch", "funding", "valuation"
   ];
 
   // Creative keywords
   const creativeKeywords = [
     "design", "art", "creative", "music", "writing", "photo", "photography", "video", "film",
     "animation", "illustration", "ui", "ux", "graphic", "visual", "aesthetic", "brand", "logo",
-    "typography", "color", "portfolio", "artist", "creator", "content", "storytelling"
+    "typography", "color", "portfolio", "artist", "creator", "content", "storytelling",
+    "figma", "sketch", "photoshop", "illustrator", "blender", "cinema4d", "aftereffects"
   ];
 
   // Language keywords
   const languageKeywords = [
     "language", "english", "spanish", "french", "german", "japanese", "chinese", "korean",
     "vocabulary", "grammar", "speaking", "writing", "reading", "fluent", "translation",
-    "linguistics", "communication"
+    "linguistics", "communication", "polyglot", "duolingo", "immersion"
   ];
 
-  // Check each category
-  if (techKeywords.some(k => topicsText.includes(k) || topicsLower.some(t => t.includes(k)))) {
-    return "tech";
-  }
-  if (scienceKeywords.some(k => topicsText.includes(k) || topicsLower.some(t => t.includes(k)))) {
-    return "science";
-  }
-  if (businessKeywords.some(k => topicsText.includes(k) || topicsLower.some(t => t.includes(k)))) {
-    return "business";
-  }
-  if (creativeKeywords.some(k => topicsText.includes(k) || topicsLower.some(t => t.includes(k)))) {
-    return "creative";
-  }
-  if (languageKeywords.some(k => topicsText.includes(k) || topicsLower.some(t => t.includes(k)))) {
-    return "language";
-  }
+  // Check each category by scanning all text
+  const checkCategory = (keywords: string[]) => {
+    return keywords.some(k => allText.includes(k));
+  };
+
+  if (checkCategory(techKeywords)) return "tech";
+  if (checkCategory(scienceKeywords)) return "science";
+  if (checkCategory(businessKeywords)) return "business";
+  if (checkCategory(creativeKeywords)) return "creative";
+  if (checkCategory(languageKeywords)) return "language";
 
   return "other";
 }
