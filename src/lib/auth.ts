@@ -1,6 +1,8 @@
 import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
+import GoogleProvider from "next-auth/providers/google";
 import TwitterProvider from "next-auth/providers/twitter";
+import FacebookProvider from "next-auth/providers/facebook";
 import bcrypt from "bcryptjs";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
@@ -8,6 +10,7 @@ import { users } from "./schema";
 
 export const authOptions: NextAuthOptions = {
   providers: [
+    // Email/Password authentication
     CredentialsProvider({
       name: "credentials",
       credentials: {
@@ -19,36 +22,46 @@ export const authOptions: NextAuthOptions = {
           throw new Error("Email and password are required");
         }
 
-        const userResult = await db
-          .select()
-          .from(users)
-          .where(eq(users.email, credentials.email))
-          .limit(1);
+        try {
+          const userResult = await db
+            .select()
+            .from(users)
+            .where(eq(users.email, credentials.email))
+            .limit(1);
 
-        const user = userResult[0];
+          const user = userResult[0];
 
-        if (!user || !user.password) {
+          if (!user || !user.password) {
+            throw new Error("Invalid email or password");
+          }
+
+          const isValidPassword = await bcrypt.compare(
+            credentials.password,
+            user.password
+          );
+
+          if (!isValidPassword) {
+            throw new Error("Invalid email or password");
+          }
+
+          return {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            image: user.image || user.twitterAvatar,
+          };
+        } catch (error) {
+          console.error("Credentials auth error:", error);
           throw new Error("Invalid email or password");
         }
-
-        const isValidPassword = await bcrypt.compare(
-          credentials.password,
-          user.password
-        );
-
-        if (!isValidPassword) {
-          throw new Error("Invalid email or password");
-        }
-
-        return {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          image: user.image || user.twitterAvatar,
-        };
       },
     }),
-    // Twitter is used for connecting account (not primary login)
+    // Google OAuth
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID || "",
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
+    }),
+    // Twitter/X OAuth (for login)
     TwitterProvider({
       clientId: process.env.TWITTER_CLIENT_ID!,
       clientSecret: process.env.TWITTER_CLIENT_SECRET!,
@@ -59,6 +72,11 @@ export const authOptions: NextAuthOptions = {
         },
       },
     }),
+    // Facebook OAuth
+    FacebookProvider({
+      clientId: process.env.FACEBOOK_CLIENT_ID || "",
+      clientSecret: process.env.FACEBOOK_CLIENT_SECRET || "",
+    }),
   ],
   callbacks: {
     async signIn({ user, account, profile }) {
@@ -67,22 +85,67 @@ export const authOptions: NextAuthOptions = {
         return true;
       }
 
-      // For Twitter OAuth (connecting account), we need to handle this differently
-      // This is only used when connecting Twitter from dashboard
-      if (account?.provider === "twitter" && profile) {
-        const twitterProfile = profile as {
-          data?: {
-            id: string;
-            username: string;
-            name: string;
-            profile_image_url?: string;
-          };
-        };
+      // For OAuth providers (Google, Twitter, Facebook), create user if doesn't exist
+      if (account && user.email) {
+        try {
+          const existingUser = await db
+            .select()
+            .from(users)
+            .where(eq(users.email, user.email))
+            .limit(1);
 
-        if (twitterProfile.data) {
-          // Store Twitter data in token for the connect flow
-          // The actual connection is handled in /api/auth/twitter/connect
-          return true;
+          if (existingUser.length === 0) {
+            // Create new user from OAuth
+            const newUserId = crypto.randomUUID();
+            await db.insert(users).values({
+              id: newUserId,
+              email: user.email,
+              name: user.name || user.email.split("@")[0],
+              image: user.image,
+              emailVerified: new Date(),
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            });
+            user.id = newUserId;
+          } else {
+            user.id = existingUser[0].id;
+            // Update user image if not set
+            if (!existingUser[0].image && user.image) {
+              await db
+                .update(users)
+                .set({ image: user.image, updatedAt: new Date() })
+                .where(eq(users.id, existingUser[0].id));
+            }
+          }
+
+          // For Twitter OAuth, also store Twitter-specific data
+          if (account.provider === "twitter" && profile) {
+            const twitterProfile = profile as {
+              data?: {
+                id: string;
+                username: string;
+                name: string;
+                profile_image_url?: string;
+              };
+            };
+
+            if (twitterProfile.data) {
+              await db
+                .update(users)
+                .set({
+                  twitterId: twitterProfile.data.id,
+                  twitterUsername: twitterProfile.data.username,
+                  twitterName: twitterProfile.data.name,
+                  twitterAvatar: twitterProfile.data.profile_image_url,
+                  twitterConnectedAt: new Date(),
+                  updatedAt: new Date(),
+                })
+                .where(eq(users.id, user.id as string));
+            }
+          }
+        } catch (error) {
+          console.error("OAuth signIn error:", error);
+          return false;
         }
       }
 
