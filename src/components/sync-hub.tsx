@@ -1,30 +1,20 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Twitter,
   Youtube,
   MessageSquare,
   Link2,
   RefreshCw,
-  Plus,
   Check,
-  AlertCircle,
   ChevronDown,
   Loader2,
-  ExternalLink,
   Clipboard,
 } from "lucide-react";
 
 type Platform = "twitter" | "youtube" | "reddit" | "manual";
-
-interface SyncStatus {
-  platform: Platform;
-  connected: boolean;
-  lastSync?: Date;
-  count?: number;
-  syncing?: boolean;
-}
 
 interface SyncHubProps {
   twitterConnected?: boolean;
@@ -32,7 +22,6 @@ interface SyncHubProps {
   lastSyncAt?: Date | null;
   bookmarkCount?: number;
   onSyncTwitter?: () => Promise<void>;
-  onAddResource?: (url: string, platform: Platform) => Promise<void>;
 }
 
 export function SyncHub({
@@ -41,12 +30,14 @@ export function SyncHub({
   lastSyncAt,
   bookmarkCount = 0,
   onSyncTwitter,
-  onAddResource,
 }: SyncHubProps) {
+  const router = useRouter();
   const [expanded, setExpanded] = useState<Platform | null>(null);
   const [syncing, setSyncing] = useState<Platform | null>(null);
   const [urlInput, setUrlInput] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
+  const [youtubeUrl, setYoutubeUrl] = useState("");
+  const [redditUrl, setRedditUrl] = useState("");
+  const [addingResource, setAddingResource] = useState(false);
   const [addStatus, setAddStatus] = useState<{ success: boolean; message: string } | null>(null);
 
   const handleSync = async (platform: Platform) => {
@@ -61,32 +52,55 @@ export function SyncHub({
     }
   };
 
-  const handleAddUrl = async () => {
-    if (!urlInput.trim()) return;
+  const addResource = async (url: string): Promise<boolean> => {
+    if (!url.trim()) return false;
 
-    const url = urlInput.trim();
-    let platform: Platform = "manual";
-
-    // Detect platform from URL
-    if (/youtube\.com|youtu\.be/i.test(url)) {
-      platform = "youtube";
-    } else if (/reddit\.com|redd\.it/i.test(url)) {
-      platform = "reddit";
-    } else if (/twitter\.com|x\.com/i.test(url)) {
-      platform = "twitter";
-    }
-
+    setAddingResource(true);
     try {
-      if (onAddResource) {
-        await onAddResource(url, platform);
+      const res = await fetch("/api/resources", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: url.trim() }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        setAddStatus({
+          success: true,
+          message: data.data.isNew ? "Resource added!" : "Already saved"
+        });
+        router.refresh();
+        return true;
+      } else {
+        setAddStatus({ success: false, message: data.error || "Failed to add" });
+        return false;
       }
-      setAddStatus({ success: true, message: "Resource added!" });
-      setUrlInput("");
     } catch {
       setAddStatus({ success: false, message: "Failed to add" });
+      return false;
+    } finally {
+      setAddingResource(false);
+      setTimeout(() => setAddStatus(null), 2000);
     }
+  };
 
-    setTimeout(() => setAddStatus(null), 2000);
+  const handleAddUrl = async () => {
+    if (!urlInput.trim()) return;
+    const success = await addResource(urlInput);
+    if (success) setUrlInput("");
+  };
+
+  const handleAddYouTube = async () => {
+    if (!youtubeUrl.trim()) return;
+    const success = await addResource(youtubeUrl);
+    if (success) setYoutubeUrl("");
+  };
+
+  const handleAddReddit = async () => {
+    if (!redditUrl.trim()) return;
+    const success = await addResource(redditUrl);
+    if (success) setRedditUrl("");
   };
 
   const handlePaste = async () => {
@@ -158,10 +172,14 @@ export function SyncHub({
               </button>
               <button
                 onClick={handleAddUrl}
-                disabled={!urlInput.trim()}
-                className="px-3 py-1 bg-purple-500 hover:bg-purple-600 disabled:opacity-50 disabled:cursor-not-allowed rounded text-white text-xs font-medium transition-colors"
+                disabled={addingResource || !urlInput.trim()}
+                className="px-3 py-1 bg-purple-500 hover:bg-purple-600 disabled:opacity-50 disabled:cursor-not-allowed rounded text-white text-xs font-medium transition-colors flex items-center gap-1"
               >
-                Add
+                {addingResource ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  "Add"
+                )}
               </button>
             </div>
           </div>
@@ -263,12 +281,24 @@ export function SyncHub({
                   <input
                     type="text"
                     placeholder="Paste YouTube video URL..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    value={youtubeUrl}
+                    onChange={(e) => setYoutubeUrl(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleAddYouTube()}
                     className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/40 text-sm focus:outline-none focus:border-red-500/50"
                   />
-                  <button className="px-4 py-2 bg-red-500 hover:bg-red-600 rounded-lg text-white text-sm font-medium transition-colors">
-                    Add Video
+                  <button
+                    onClick={handleAddYouTube}
+                    disabled={addingResource || !youtubeUrl.trim()}
+                    className="px-4 py-2 bg-red-500 hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-white text-sm font-medium transition-colors flex items-center gap-2"
+                  >
+                    {addingResource ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Adding...
+                      </>
+                    ) : (
+                      "Add Video"
+                    )}
                   </button>
                 </div>
                 <p className="text-xs text-white/40">
@@ -284,19 +314,33 @@ export function SyncHub({
                 <div className="flex items-center gap-2">
                   <input
                     type="text"
-                    placeholder="Paste Reddit post URL or search subreddits..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Paste Reddit post URL..."
+                    value={redditUrl}
+                    onChange={(e) => setRedditUrl(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleAddReddit()}
                     className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/40 text-sm focus:outline-none focus:border-orange-500/50"
                   />
-                  <button className="px-4 py-2 bg-orange-500 hover:bg-orange-600 rounded-lg text-white text-sm font-medium transition-colors">
-                    Add Post
+                  <button
+                    onClick={handleAddReddit}
+                    disabled={addingResource || !redditUrl.trim()}
+                    className="px-4 py-2 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-white text-sm font-medium transition-colors flex items-center gap-2"
+                  >
+                    {addingResource ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Adding...
+                      </>
+                    ) : (
+                      "Add Post"
+                    )}
                   </button>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  <span className="text-xs text-white/40">Popular:</span>
                   {["r/learnprogramming", "r/datascience", "r/MachineLearning", "r/webdev"].map((sub) => (
                     <button
                       key={sub}
+                      onClick={() => setRedditUrl(`https://reddit.com/${sub}`)}
                       className="px-2 py-1 bg-white/5 hover:bg-white/10 rounded text-xs text-white/60 hover:text-white/80 transition-colors"
                     >
                       {sub}

@@ -109,6 +109,51 @@ export const bookmarks = pgTable(
 );
 
 // ============================================================
+// Resources Table (YouTube, Reddit, Manual URLs)
+// ============================================================
+
+export const resources = pgTable(
+  "Resource",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    userId: text("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    platform: text("platform").notNull(), // 'youtube', 'reddit', 'manual', 'twitter'
+    url: text("url").notNull(),
+    title: text("title"),
+    description: text("description"),
+    thumbnailUrl: text("thumbnailUrl"),
+    authorName: text("authorName"),
+    authorHandle: text("authorHandle"),
+    // YouTube-specific
+    videoDuration: integer("videoDuration"), // in seconds
+    channelId: text("channelId"),
+    // Reddit-specific
+    subreddit: text("subreddit"),
+    upvotes: integer("upvotes"),
+    // Processing
+    summary: text("summary"),
+    topics: text("topics").array(),
+    keyTakeaways: text("keyTakeaways").array(),
+    learningDepth: text("learningDepth"),
+    lastProcessedAt: timestamp("lastProcessedAt", { mode: "date" }),
+    // Metadata
+    addedAt: timestamp("addedAt", { mode: "date" }).defaultNow().notNull(),
+    createdAt: timestamp("createdAt", { mode: "date" }).defaultNow().notNull(),
+  },
+  (table) => ({
+    userPlatformIdx: index("Resource_userId_platform_idx").on(
+      table.userId,
+      table.platform
+    ),
+    urlUnique: unique("Resource_url_userId_key").on(table.url, table.userId),
+  })
+);
+
+// ============================================================
 // Course Models
 // ============================================================
 
@@ -393,9 +438,17 @@ export const verificationTokens = pgTable(
 export const usersRelations = relations(users, ({ one, many }) => ({
   preferences: one(userPreferences),
   bookmarks: many(bookmarks),
+  resources: many(resources),
   courses: many(courses),
   progress: many(learningProgress),
   quizResults: many(quizResults),
+}));
+
+export const resourcesRelations = relations(resources, ({ one }) => ({
+  user: one(users, {
+    fields: [resources.userId],
+    references: [users.id],
+  }),
 }));
 
 export const bookmarksRelations = relations(bookmarks, ({ one, many }) => ({
