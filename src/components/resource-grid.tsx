@@ -309,13 +309,13 @@ function ResourceCard({ resource, onAction }: { resource: Resource; onAction: (a
             <img
               src={resource.authorProfileImage}
               alt={resource.author}
-              className="w-5 h-5 rounded-full object-cover"
+              className="w-6 h-6 rounded-full object-cover border border-white/20"
               onError={(e) => {
                 (e.target as HTMLImageElement).style.display = 'none';
               }}
             />
           ) : (
-            <div className="w-5 h-5 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+            <div className="w-6 h-6 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center border border-white/20">
               <span className="text-[10px] font-bold text-white">
                 {resource.author?.charAt(0)?.toUpperCase() || '?'}
               </span>
@@ -323,7 +323,8 @@ function ResourceCard({ resource, onAction }: { resource: Resource; onAction: (a
           )}
           <div className="flex items-center gap-1 text-xs text-white/50 truncate">
             <span className="truncate font-medium text-white/70">{resource.author}</span>
-            {resource.authorHandle && (
+            {/* Only show handle for Twitter, not YouTube (where authorHandle stores profile image URL) */}
+            {resource.authorHandle && resource.platform === "twitter" && (
               <span className="text-white/40 truncate">@{resource.authorHandle}</span>
             )}
           </div>
