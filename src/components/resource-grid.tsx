@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Twitter,
@@ -13,16 +13,17 @@ import {
   Loader2,
   ChevronLeft,
   ChevronRight,
-  Filter,
   Grid3X3,
-  LayoutGrid,
   Heart,
-  Bookmark,
-  Share2,
   ExternalLink,
-  Wand2,
   CheckCircle,
   Clock,
+  Code,
+  Lightbulb,
+  Zap,
+  Flame,
+  Star,
+  TrendingUp,
 } from "lucide-react";
 
 type Platform = "twitter" | "youtube" | "reddit" | "manual" | "all";
@@ -87,40 +88,116 @@ function CategoryPill({ category, active, onClick }: { category: string; active:
   );
 }
 
+// Helper to extract YouTube video ID and get thumbnail
+function getYouTubeThumbnail(url: string): string | null {
+  const patterns = [
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&?/]+)/i,
+    /youtube\.com\/shorts\/([^&?/]+)/i,
+  ];
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (match) {
+      return `https://img.youtube.com/vi/${match[1]}/mqdefault.jpg`;
+    }
+  }
+  return null;
+}
+
+// Platform-specific placeholder component
+function PlatformPlaceholder({ platform, category }: { platform: Platform; category: Category }) {
+  const platformConfig = {
+    twitter: {
+      gradient: "from-sky-600 via-blue-600 to-indigo-700",
+      icon: Twitter,
+      pattern: "radial-gradient(circle at 20% 80%, rgba(56, 189, 248, 0.3) 0%, transparent 50%)",
+    },
+    youtube: {
+      gradient: "from-red-600 via-rose-600 to-pink-700",
+      icon: Youtube,
+      pattern: "radial-gradient(circle at 80% 20%, rgba(248, 113, 113, 0.3) 0%, transparent 50%)",
+    },
+    reddit: {
+      gradient: "from-orange-600 via-amber-600 to-yellow-700",
+      icon: MessageSquare,
+      pattern: "radial-gradient(circle at 50% 50%, rgba(251, 191, 36, 0.3) 0%, transparent 50%)",
+    },
+    manual: {
+      gradient: "from-purple-600 via-violet-600 to-fuchsia-700",
+      icon: Globe,
+      pattern: "radial-gradient(circle at 30% 70%, rgba(167, 139, 250, 0.3) 0%, transparent 50%)",
+    },
+    all: {
+      gradient: "from-slate-600 via-gray-600 to-zinc-700",
+      icon: Globe,
+      pattern: "none",
+    },
+  };
+
+  const categoryIcons = {
+    tech: Code,
+    science: Lightbulb,
+    business: TrendingUp,
+    creative: Star,
+    language: BookOpen,
+    other: Zap,
+    all: Sparkles,
+  };
+
+  const config = platformConfig[platform];
+  const CategoryIcon = categoryIcons[category] || Flame;
+  const PlatformIcon = config.icon;
+
+  return (
+    <div
+      className={`w-full h-full bg-gradient-to-br ${config.gradient} flex items-center justify-center relative overflow-hidden`}
+      style={{ backgroundImage: config.pattern }}
+    >
+      {/* Decorative elements */}
+      <div className="absolute inset-0 opacity-20">
+        <div className="absolute top-4 left-4 w-16 h-16 border border-white/20 rounded-full" />
+        <div className="absolute bottom-4 right-4 w-24 h-24 border border-white/10 rounded-full" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 border border-white/10 rounded-full" />
+      </div>
+
+      {/* Main icon */}
+      <div className="relative z-10 flex flex-col items-center">
+        <div className="p-4 bg-white/10 rounded-2xl backdrop-blur-sm border border-white/20 shadow-xl">
+          <PlatformIcon className="h-8 w-8 text-white" />
+        </div>
+        <div className="mt-2 flex items-center gap-1 px-2 py-1 bg-black/20 rounded-full">
+          <CategoryIcon className="h-3 w-3 text-white/70" />
+          <span className="text-[10px] text-white/70 font-medium uppercase tracking-wider">
+            {category === "all" ? "Resource" : category}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Resource card component
 function ResourceCard({ resource, onAction }: { resource: Resource; onAction: (action: string) => void }) {
   const [imageError, setImageError] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
-  const [generating, setGenerating] = useState(false);
 
-  const mediaUrl = resource.mediaUrls?.[0] || resource.thumbnailUrl;
-  const hasValidMedia = mediaUrl && !imageError;
-
-  // Generate gradient based on ID
-  const getGradient = () => {
-    const hash = resource.id.split("").reduce((a, b) => {
-      a = (a << 5) - a + b.charCodeAt(0);
-      return a & a;
-    }, 0);
-    const gradients = [
-      "from-purple-600 via-violet-600 to-indigo-600",
-      "from-pink-600 via-rose-600 to-red-600",
-      "from-blue-600 via-cyan-600 to-teal-600",
-      "from-orange-600 via-amber-600 to-yellow-600",
-      "from-green-600 via-emerald-600 to-cyan-600",
-      "from-indigo-600 via-purple-600 to-pink-600",
-    ];
-    return gradients[Math.abs(hash) % gradients.length];
-  };
-
-  const handleGenerateImage = async () => {
-    setGenerating(true);
-    try {
-      await fetch(`/api/bookmarks/${resource.id}/generate-image`, { method: "POST" });
-    } finally {
-      setGenerating(false);
+  // Try to get thumbnail - prioritize media URLs, then YouTube auto-thumbnail
+  const getDisplayImage = (): string | null => {
+    // First try existing media URLs
+    if (resource.mediaUrls?.[0] && !imageError) {
+      return resource.mediaUrls[0];
     }
+    if (resource.thumbnailUrl && !imageError) {
+      return resource.thumbnailUrl;
+    }
+    // For YouTube, auto-generate thumbnail
+    if (resource.platform === "youtube" || resource.url?.includes("youtube") || resource.url?.includes("youtu.be")) {
+      return getYouTubeThumbnail(resource.url);
+    }
+    return null;
   };
+
+  const displayImage = getDisplayImage();
+  const hasValidMedia = displayImage && !imageError;
 
   return (
     <div
@@ -132,25 +209,13 @@ function ResourceCard({ resource, onAction }: { resource: Resource; onAction: (a
       <div className="relative aspect-video overflow-hidden">
         {hasValidMedia ? (
           <img
-            src={mediaUrl}
+            src={displayImage}
             alt=""
             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
             onError={() => setImageError(true)}
           />
         ) : (
-          <div className={`w-full h-full bg-gradient-to-br ${getGradient()} flex items-center justify-center`}>
-            {generating ? (
-              <Loader2 className="h-8 w-8 text-white/60 animate-spin" />
-            ) : (
-              <button
-                onClick={handleGenerateImage}
-                className="flex flex-col items-center text-white/60 hover:text-white/80 transition-colors"
-              >
-                <Wand2 className="h-8 w-8 mb-1" />
-                <span className="text-xs">Generate</span>
-              </button>
-            )}
-          </div>
+          <PlatformPlaceholder platform={resource.platform} category={resource.category} />
         )}
 
         {/* Gradient Overlay */}
@@ -162,7 +227,7 @@ function ResourceCard({ resource, onAction }: { resource: Resource; onAction: (a
         </div>
 
         {/* Progress indicator */}
-        {resource.progress !== undefined && resource.progress > 0 && (
+        {resource.progress !== undefined && resource.progress > 0 && !resource.isCompleted && (
           <div className="absolute top-2 right-2">
             <div className="flex items-center gap-1 px-2 py-1 bg-black/50 rounded-full backdrop-blur-sm">
               <Clock className="h-3 w-3 text-cyan-400" />
@@ -240,34 +305,83 @@ export function ResourceGrid({ columns = 4, rows = 4 }: ResourceGridProps) {
   const [selectedCategory, setSelectedCategory] = useState<Category>("all");
   const [currentPage, setCurrentPage] = useState(0);
 
-  // Fetch bookmarks
-  const { data: bookmarksData, isLoading } = useQuery({
+  // Fetch bookmarks (Twitter)
+  const { data: bookmarksData, isLoading: loadingBookmarks } = useQuery({
     queryKey: ["bookmarks"],
     queryFn: async () => {
-      const res = await fetch("/api/bookmarks?limit=100");
+      const res = await fetch("/api/bookmarks?pageSize=100");
       const data = await res.json();
       return data.data || [];
     },
   });
 
+  // Fetch resources (YouTube, Reddit, Manual)
+  const { data: resourcesData, isLoading: loadingResources } = useQuery({
+    queryKey: ["resources"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/resources?pageSize=100");
+        if (!res.ok) return [];
+        const data = await res.json();
+        return data.data || [];
+      } catch {
+        return [];
+      }
+    },
+  });
+
+  const isLoading = loadingBookmarks || loadingResources;
+
   // Transform bookmarks to resources
-  const resources: Resource[] = (bookmarksData || []).map((b: any) => ({
-    id: b.id,
-    title: b.tweetText?.slice(0, 100) || "",
-    description: b.tweetText || "",
-    platform: "twitter" as Platform,
-    category: detectCategory(b.topics || []),
-    thumbnailUrl: b.mediaUrls?.[0],
-    mediaUrls: b.mediaUrls,
-    hasMedia: b.hasMedia,
-    url: b.tweetUrl,
-    author: b.tweetAuthorName,
-    authorHandle: b.tweetAuthorHandle,
-    createdAt: new Date(b.createdAt),
+  const bookmarkResources: Resource[] = (bookmarksData || []).map((b: any) => {
+    // Check if the tweet contains a YouTube link
+    const youtubeMatch = b.tweetText?.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&?\s]+)/i);
+    const hasYouTubeLink = !!youtubeMatch;
+
+    return {
+      id: b.id,
+      title: b.tweetText?.slice(0, 100) || "",
+      description: b.tweetText || "",
+      platform: "twitter" as Platform,
+      category: detectCategory(b.topics || []),
+      thumbnailUrl: hasYouTubeLink
+        ? `https://img.youtube.com/vi/${youtubeMatch[1]}/mqdefault.jpg`
+        : b.mediaUrls?.[0],
+      mediaUrls: b.mediaUrls,
+      hasMedia: b.hasMedia || hasYouTubeLink,
+      url: b.tweetUrl,
+      author: b.tweetAuthorName,
+      authorHandle: b.tweetAuthorHandle,
+      createdAt: new Date(b.createdAt || b.bookmarkedAt),
+      isCompleted: false,
+      progress: 0,
+      xpReward: 25,
+    };
+  });
+
+  // Transform resources from resources API
+  const otherResources: Resource[] = (resourcesData || []).map((r: any) => ({
+    id: r.id,
+    title: r.title || r.url,
+    description: r.description || "",
+    platform: r.platform as Platform,
+    category: detectCategory(r.topics || []),
+    thumbnailUrl: r.thumbnailUrl || (r.platform === "youtube" ? getYouTubeThumbnail(r.url) : null),
+    mediaUrls: r.thumbnailUrl ? [r.thumbnailUrl] : undefined,
+    hasMedia: !!r.thumbnailUrl || r.platform === "youtube",
+    url: r.url,
+    author: r.authorName || "Unknown",
+    authorHandle: r.authorHandle,
+    createdAt: new Date(r.addedAt || r.createdAt),
     isCompleted: false,
     progress: 0,
-    xpReward: 25,
+    xpReward: r.platform === "youtube" ? 50 : 25,
   }));
+
+  // Combine all resources
+  const resources: Resource[] = [...bookmarkResources, ...otherResources].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
 
   // Filter resources
   const filteredResources = resources.filter((r) => {
