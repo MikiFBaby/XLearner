@@ -10,6 +10,7 @@ import {
   validateBody,
   withErrorHandler,
 } from "@/lib/api-utils";
+import { YoutubeTranscript } from "youtube-transcript";
 
 // Validation schema for adding a resource
 const addResourceSchema = z.object({
@@ -44,6 +45,173 @@ function extractYouTubeId(url: string): string | null {
 function extractRedditInfo(url: string): { subreddit?: string } {
   const match = url.match(/reddit\.com\/r\/([^/]+)/i);
   return { subreddit: match ? match[1] : undefined };
+}
+
+// Fetch YouTube video transcript
+async function fetchYouTubeTranscript(videoId: string): Promise<string | null> {
+  try {
+    console.log(`[Transcript] Fetching transcript for video: ${videoId}`);
+    const transcriptItems = await YoutubeTranscript.fetchTranscript(videoId);
+
+    if (!transcriptItems || transcriptItems.length === 0) {
+      console.log(`[Transcript] No transcript available for ${videoId}`);
+      return null;
+    }
+
+    // Combine all transcript segments into one text
+    const fullTranscript = transcriptItems
+      .map(item => item.text)
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    console.log(`[Transcript] Got ${transcriptItems.length} segments, ${fullTranscript.length} chars`);
+
+    // Limit transcript to ~4000 chars for Gemini (to stay within token limits)
+    return fullTranscript.slice(0, 4000);
+  } catch (error) {
+    console.error(`[Transcript] Error fetching transcript for ${videoId}:`, error);
+    return null;
+  }
+}
+
+// Analyze transcript with Gemini AI to generate summary, key takeaways, and knowledge tags
+async function analyzeWithGemini(
+  title: string,
+  transcript: string | null,
+  description?: string
+): Promise<{ summary: string; keyTakeaways: string[]; knowledgeTags: string[] }> {
+  const geminiApiKey = process.env.IMAGE_GEN_API_KEY;
+
+  // Fallback if no API key or no transcript
+  if (!geminiApiKey) {
+    console.log('[Gemini] No API key, using fallback');
+    return generateFallbackAnalysis(title, description);
+  }
+
+  try {
+    const contentToAnalyze = transcript
+      ? `Transcript: ${transcript}`
+      : `Description: ${description?.slice(0, 1000) || 'No description available'}`;
+
+    const prompt = `Analyze this YouTube video and provide a structured analysis.
+
+Title: ${title}
+${contentToAnalyze}
+
+Respond in JSON format ONLY with these exact fields:
+{
+  "summary": "A concise 2-3 sentence summary of the main points and value of this video (max 250 chars)",
+  "keyTakeaways": ["takeaway1", "takeaway2", "takeaway3", "takeaway4", "takeaway5"],
+  "knowledgeTags": ["tag1", "tag2", "tag3"]
+}
+
+Guidelines:
+- summary: What will viewers learn? What's the core message?
+- keyTakeaways: 3-5 specific, actionable insights or lessons from the content
+- knowledgeTags: 3 broad knowledge categories this content falls under (e.g., "Personal Development", "Business Strategy", "Technology")`;
+
+    console.log('[Gemini] Calling API for analysis...');
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0.3,
+            maxOutputTokens: 512,
+          },
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[Gemini] API error:', response.status, errorText.slice(0, 200));
+      return generateFallbackAnalysis(title, description);
+    }
+
+    const data = await response.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    console.log('[Gemini] Raw response:', text.slice(0, 200));
+
+    // Parse JSON from response
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      const result = {
+        summary: parsed.summary?.slice(0, 300) || `Learn key insights from: ${title}`,
+        keyTakeaways: Array.isArray(parsed.keyTakeaways) ? parsed.keyTakeaways.slice(0, 5) : [],
+        knowledgeTags: Array.isArray(parsed.knowledgeTags) ? parsed.knowledgeTags.slice(0, 5) : [],
+      };
+      console.log('[Gemini] Parsed result:', JSON.stringify(result).slice(0, 200));
+      return result;
+    }
+
+    console.log('[Gemini] Could not parse JSON from response');
+    return generateFallbackAnalysis(title, description);
+  } catch (error) {
+    console.error('[Gemini] Error:', error);
+    return generateFallbackAnalysis(title, description);
+  }
+}
+
+// Fallback analysis when Gemini is unavailable
+function generateFallbackAnalysis(title: string, description?: string): {
+  summary: string;
+  keyTakeaways: string[];
+  knowledgeTags: string[];
+} {
+  // Clean up the title
+  const cleanTitle = title
+    .replace(/\s*\|\s*.+$/, '')
+    .replace(/\s*-\s*[^-]+$/, '')
+    .replace(/\s*\(4K\)|\(HD\)|\(Official\)/gi, '')
+    .replace(/\s*\[[^\]]+\]$/i, '')
+    .trim();
+
+  const titleLower = cleanTitle.toLowerCase();
+
+  // Generate contextual summary
+  let summary: string;
+  if (titleLower.includes('how to') || titleLower.includes('tutorial')) {
+    summary = `Step-by-step guide covering: ${cleanTitle}`;
+  } else if (titleLower.includes('truth') || titleLower.includes('secrets') || titleLower.includes('lessons')) {
+    summary = `Key insights and wisdom: ${cleanTitle}`;
+  } else if (titleLower.includes('review')) {
+    summary = `In-depth analysis and review: ${cleanTitle}`;
+  } else if (/^\d+/.test(cleanTitle)) {
+    summary = `Collection of valuable insights: ${cleanTitle}`;
+  } else {
+    summary = `Explore and learn: ${cleanTitle}`;
+  }
+
+  // Generate knowledge tags based on content
+  const tags: string[] = [];
+  if (/life|living|mindset|success|habits/i.test(titleLower)) tags.push('Personal Development');
+  if (/business|entrepreneur|startup/i.test(titleLower)) tags.push('Business');
+  if (/money|invest|finance|wealth/i.test(titleLower)) tags.push('Finance');
+  if (/programming|coding|software|tech/i.test(titleLower)) tags.push('Technology');
+  if (/health|fitness|workout/i.test(titleLower)) tags.push('Health & Fitness');
+  if (/psychology|brain|mind/i.test(titleLower)) tags.push('Psychology');
+  if (tags.length === 0) tags.push('Education', 'Learning');
+
+  // Generate key takeaways
+  const takeaways: string[] = [];
+  if (/truth|lesson|insight/i.test(titleLower)) takeaways.push('Life lessons and wisdom');
+  if (/how to|guide|tutorial/i.test(titleLower)) takeaways.push('Practical step-by-step guidance');
+  if (/success|achieve|goal/i.test(titleLower)) takeaways.push('Strategies for achievement');
+  if (/mindset|think|psychology/i.test(titleLower)) takeaways.push('Mental frameworks and perspectives');
+  if (takeaways.length === 0) takeaways.push('Key concepts and ideas', 'Actionable insights');
+
+  return {
+    summary: summary.slice(0, 300),
+    keyTakeaways: takeaways.slice(0, 5),
+    knowledgeTags: tags.slice(0, 5),
+  };
 }
 
 // Use Gemini AI to generate summary and extract skills
@@ -409,8 +577,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
 });
 
 // PATCH /api/resources - Refresh metadata for YouTube videos
-// NOTE: External APIs (YouTube, Gemini) are blocked in this environment
-// So we generate summaries/skills directly from existing title data
+// Fetches transcript → Sends to Gemini → Gets summary, key takeaways, knowledge tags
 export const PATCH = withErrorHandler(async (_request: NextRequest) => {
   const user = await requireAuth();
 
@@ -428,27 +595,66 @@ export const PATCH = withErrorHandler(async (_request: NextRequest) => {
   console.log(`[PATCH] Found ${youtubeResources.length} YouTube resources`);
 
   let updated = 0;
+  const errors: string[] = [];
+
   for (const resource of youtubeResources) {
-    // Update if missing summary or skills (we generate these locally)
+    // Update if missing summary or key takeaways
     const needsUpdate = !resource.summary || !resource.keyTakeaways?.length;
 
-    console.log(`[PATCH] Resource ${resource.id}: needsUpdate=${needsUpdate}, title="${resource.title?.slice(0, 40)}"`);
+    if (!needsUpdate) {
+      console.log(`[PATCH] Skipping ${resource.id} - already has data`);
+      continue;
+    }
 
-    if (needsUpdate && resource.title) {
-      // Generate summary and skills directly from title (no external API calls)
-      const summary = generateSmartSummary(resource.title, resource.description || undefined);
-      const skills = generateSmartSkills(resource.title, resource.description || undefined);
+    if (!resource.title) {
+      console.log(`[PATCH] Skipping ${resource.id} - no title`);
+      continue;
+    }
 
-      console.log(`[PATCH] Generated - summary: "${summary.slice(0, 50)}", skills: [${skills.join(', ')}]`);
+    try {
+      // Extract video ID
+      const videoId = extractYouTubeId(resource.url);
+      if (!videoId) {
+        console.log(`[PATCH] Skipping ${resource.id} - invalid URL`);
+        continue;
+      }
 
+      console.log(`[PATCH] Processing: "${resource.title?.slice(0, 40)}..." (${videoId})`);
+
+      // Step 1: Fetch transcript
+      const transcript = await fetchYouTubeTranscript(videoId);
+      console.log(`[PATCH] Transcript: ${transcript ? `${transcript.length} chars` : 'not available'}`);
+
+      // Step 2: Analyze with Gemini (uses transcript if available, falls back to title/description)
+      const analysis = await analyzeWithGemini(
+        resource.title,
+        transcript,
+        resource.description || undefined
+      );
+
+      console.log(`[PATCH] Analysis result:`, {
+        summary: analysis.summary?.slice(0, 50),
+        takeaways: analysis.keyTakeaways?.length,
+        tags: analysis.knowledgeTags?.length,
+      });
+
+      // Step 3: Update database
       await db
         .update(resources)
         .set({
-          summary: summary,
-          keyTakeaways: skills,
+          summary: analysis.summary,
+          keyTakeaways: analysis.keyTakeaways,
+          topics: analysis.knowledgeTags, // Store knowledge tags in topics field
         })
         .where(eq(resources.id, resource.id));
+
       updated++;
+      console.log(`[PATCH] ✓ Updated resource ${resource.id}`);
+
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      console.error(`[PATCH] Error processing ${resource.id}:`, errorMsg);
+      errors.push(`${resource.title?.slice(0, 30)}: ${errorMsg}`);
     }
   }
 
@@ -462,13 +668,15 @@ export const PATCH = withErrorHandler(async (_request: NextRequest) => {
   console.log(`[PATCH] Complete. Updated ${updated}/${youtubeResources.length} resources`);
 
   return successResponse({
-    message: `Updated ${updated} YouTube videos with summaries`,
+    message: `Analyzed ${updated} YouTube videos with transcripts`,
     updated,
     total: youtubeResources.length,
+    errors: errors.length > 0 ? errors : undefined,
     sample: sampleResource.length > 0 ? {
       title: sampleResource[0].title,
       summary: sampleResource[0].summary,
       keyTakeaways: sampleResource[0].keyTakeaways,
+      topics: sampleResource[0].topics,
     } : null,
   });
 });
