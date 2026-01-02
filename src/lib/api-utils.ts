@@ -46,14 +46,14 @@ export function paginatedResponse<T>(
 export async function getAuthenticatedUser() {
   const session = await getServerSession(authOptions);
 
-  if (!session?.user?.twitterId) {
+  if (!session?.user?.id) {
     return null;
   }
 
   const result = await db
     .select()
     .from(users)
-    .where(eq(users.twitterId, session.user.twitterId))
+    .where(eq(users.id, session.user.id))
     .limit(1);
 
   return result[0] || null;
