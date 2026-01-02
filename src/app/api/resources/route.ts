@@ -456,9 +456,21 @@ export const PATCH = withErrorHandler(async (_request: NextRequest) => {
     }
   }
 
+  // Get one updated resource to verify data
+  const sampleResource = youtubeResources.length > 0 ? await db
+    .select()
+    .from(resources)
+    .where(eq(resources.id, youtubeResources[0].id))
+    .limit(1) : [];
+
   return successResponse({
     message: `Updated ${updated} YouTube videos with metadata`,
     updated,
     total: youtubeResources.length,
+    debug: sampleResource.length > 0 ? {
+      authorHandle: sampleResource[0].authorHandle?.slice(0, 80),
+      summary: sampleResource[0].summary?.slice(0, 100),
+      keyTakeaways: sampleResource[0].keyTakeaways,
+    } : null,
   });
 });
