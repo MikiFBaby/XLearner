@@ -46,24 +46,87 @@ function extractRedditInfo(url: string): { subreddit?: string } {
   return { subreddit: match ? match[1] : undefined };
 }
 
-// Fetch YouTube video metadata using oembed (no API key required)
+// Fetch YouTube video metadata using YouTube Data API v3
 async function fetchYouTubeMetadata(url: string): Promise<{
   title?: string;
+  description?: string;
   authorName?: string;
+  authorProfileImage?: string;
   thumbnailUrl?: string;
+  tags?: string[];
+  channelId?: string;
 }> {
-  try {
-    const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
-    const response = await fetch(oembedUrl);
-    if (!response.ok) return {};
+  const apiKey = process.env.YOUTUBE_API_KEY;
 
-    const data = await response.json();
+  // Fall back to oembed if no API key
+  if (!apiKey) {
+    try {
+      const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
+      const response = await fetch(oembedUrl);
+      if (!response.ok) return {};
+      const data = await response.json();
+      return {
+        title: data.title,
+        authorName: data.author_name,
+        thumbnailUrl: data.thumbnail_url,
+      };
+    } catch {
+      return {};
+    }
+  }
+
+  try {
+    // Extract video ID
+    const videoId = extractYouTubeId(url);
+    if (!videoId) return {};
+
+    // Fetch video details
+    const videoUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${videoId}&key=${apiKey}`;
+    const videoResponse = await fetch(videoUrl);
+
+    if (!videoResponse.ok) {
+      console.error("YouTube API error:", await videoResponse.text());
+      return {};
+    }
+
+    const videoData = await videoResponse.json();
+
+    if (!videoData.items || videoData.items.length === 0) {
+      return {};
+    }
+
+    const snippet = videoData.items[0].snippet;
+    const channelId = snippet.channelId;
+
+    // Fetch channel details to get profile image
+    let authorProfileImage: string | undefined;
+    if (channelId) {
+      const channelUrl = `https://www.googleapis.com/youtube/v3/channels?part=snippet&id=${channelId}&key=${apiKey}`;
+      const channelResponse = await fetch(channelUrl);
+
+      if (channelResponse.ok) {
+        const channelData = await channelResponse.json();
+        if (channelData.items && channelData.items.length > 0) {
+          authorProfileImage = channelData.items[0].snippet.thumbnails?.default?.url ||
+                              channelData.items[0].snippet.thumbnails?.medium?.url;
+        }
+      }
+    }
+
     return {
-      title: data.title,
-      authorName: data.author_name,
-      thumbnailUrl: data.thumbnail_url,
+      title: snippet.title,
+      description: snippet.description?.slice(0, 500),
+      authorName: snippet.channelTitle,
+      authorProfileImage,
+      thumbnailUrl: snippet.thumbnails?.maxres?.url ||
+                   snippet.thumbnails?.high?.url ||
+                   snippet.thumbnails?.medium?.url ||
+                   snippet.thumbnails?.default?.url,
+      tags: snippet.tags?.slice(0, 10),
+      channelId,
     };
-  } catch {
+  } catch (error) {
+    console.error("Error fetching YouTube metadata:", error);
     return {};
   }
 }
@@ -81,19 +144,25 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     subreddit?: string;
     videoDuration?: number;
     title?: string;
+    description?: string;
     authorName?: string;
+    authorHandle?: string; // Store channel profile image URL here
     thumbnailUrl?: string;
+    topics?: string[];
   } = {};
 
   if (platform === "youtube") {
     const videoId = extractYouTubeId(body.url);
     if (videoId) {
-      metadata.channelId = videoId;
-      // Fetch YouTube video metadata (title, author, thumbnail)
+      // Fetch YouTube video metadata (title, author, thumbnail, channel avatar)
       const ytMetadata = await fetchYouTubeMetadata(body.url);
+      metadata.channelId = ytMetadata.channelId || videoId;
       metadata.title = ytMetadata.title;
+      metadata.description = ytMetadata.description;
       metadata.authorName = ytMetadata.authorName;
+      metadata.authorHandle = ytMetadata.authorProfileImage; // Store profile image in authorHandle
       metadata.thumbnailUrl = ytMetadata.thumbnailUrl;
+      metadata.topics = ytMetadata.tags;
     }
   } else if (platform === "reddit") {
     const redditInfo = extractRedditInfo(body.url);
@@ -123,12 +192,14 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       url: body.url,
       platform,
       title: body.title || metadata.title,
-      description: body.description,
+      description: body.description || metadata.description,
       authorName: metadata.authorName,
+      authorHandle: metadata.authorHandle, // Channel profile image URL for YouTube
       thumbnailUrl: metadata.thumbnailUrl,
       channelId: metadata.channelId,
       subreddit: metadata.subreddit,
       videoDuration: metadata.videoDuration,
+      topics: metadata.topics,
     })
     .returning();
 
@@ -193,17 +264,21 @@ export const PATCH = withErrorHandler(async (_request: NextRequest) => {
 
   let updated = 0;
   for (const resource of youtubeResources) {
-    // Only update if missing title or author
-    if (!resource.title || resource.title === resource.url || !resource.authorName) {
+    // Update if missing title, author, or author profile image
+    if (!resource.title || resource.title === resource.url || !resource.authorName || !resource.authorHandle) {
       const metadata = await fetchYouTubeMetadata(resource.url);
 
-      if (metadata.title || metadata.authorName) {
+      if (metadata.title || metadata.authorName || metadata.authorProfileImage) {
         await db
           .update(resources)
           .set({
             title: metadata.title || resource.title,
+            description: metadata.description || resource.description,
             authorName: metadata.authorName || resource.authorName,
+            authorHandle: metadata.authorProfileImage || resource.authorHandle, // Channel profile image
             thumbnailUrl: metadata.thumbnailUrl || resource.thumbnailUrl,
+            channelId: metadata.channelId || resource.channelId,
+            topics: metadata.tags || resource.topics,
           })
           .where(eq(resources.id, resource.id));
         updated++;

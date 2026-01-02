@@ -420,11 +420,13 @@ export function ResourceGrid({ columns = 4, rows = 4 }: ResourceGridProps) {
     hasMedia: !!r.thumbnailUrl || r.platform === "youtube",
     url: r.url,
     author: r.authorName || "Unknown",
-    authorHandle: r.authorHandle,
+    // For YouTube, authorHandle stores the channel profile image URL
+    authorProfileImage: r.platform === "youtube" ? r.authorHandle : undefined,
     createdAt: new Date(r.addedAt || r.createdAt),
     isCompleted: false,
     progress: 0,
     xpReward: r.platform === "youtube" ? 50 : 25,
+    topics: r.topics,
   }));
 
   // Combine all resources
