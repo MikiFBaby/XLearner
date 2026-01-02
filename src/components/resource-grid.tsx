@@ -397,6 +397,16 @@ export function ResourceGrid({ columns = 4, rows = 4 }: ResourceGridProps) {
         const res = await fetch("/api/resources?pageSize=100");
         if (!res.ok) return [];
         const data = await res.json();
+        // Debug: log first YouTube resource to verify data
+        const ytResources = (data.data || []).filter((r: any) => r.platform === "youtube");
+        if (ytResources.length > 0) {
+          console.log("[ResourceGrid] First YouTube resource:", {
+            title: ytResources[0].title?.slice(0, 50),
+            authorHandle: ytResources[0].authorHandle?.slice(0, 80),
+            summary: ytResources[0].summary,
+            keyTakeaways: ytResources[0].keyTakeaways,
+          });
+        }
         return data.data || [];
       } catch {
         return [];
