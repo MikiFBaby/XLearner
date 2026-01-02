@@ -1,5 +1,7 @@
 import { NextRequest } from "next/server";
-import { prisma } from "@/lib/db";
+import { db } from "@/lib/db";
+import { userPreferences } from "@/lib/schema";
+import { eq } from "drizzle-orm";
 import {
   requireAuth,
   successResponse,
@@ -12,17 +14,23 @@ import { updatePreferencesSchema } from "@/lib/validations";
 export const GET = withErrorHandler(async (_request: NextRequest) => {
   const user = await requireAuth();
 
-  let preferences = await prisma.userPreferences.findUnique({
-    where: { userId: user.id },
-  });
+  const prefsResult = await db
+    .select()
+    .from(userPreferences)
+    .where(eq(userPreferences.userId, user.id))
+    .limit(1);
+
+  let preferences = prefsResult[0];
 
   // Create default preferences if they don't exist
   if (!preferences) {
-    preferences = await prisma.userPreferences.create({
-      data: {
+    const newPrefsResult = await db
+      .insert(userPreferences)
+      .values({
         userId: user.id,
-      },
-    });
+      })
+      .returning();
+    preferences = newPrefsResult[0];
   }
 
   return successResponse(preferences);
@@ -33,14 +41,34 @@ export const PATCH = withErrorHandler(async (request: NextRequest) => {
   const user = await requireAuth();
   const data = await validateBody(request, updatePreferencesSchema);
 
-  const preferences = await prisma.userPreferences.upsert({
-    where: { userId: user.id },
-    create: {
-      userId: user.id,
-      ...data,
-    },
-    update: data,
-  });
+  // Check if preferences exist
+  const existingResult = await db
+    .select()
+    .from(userPreferences)
+    .where(eq(userPreferences.userId, user.id))
+    .limit(1);
+
+  let preferences;
+
+  if (existingResult.length > 0) {
+    // Update existing
+    const updateResult = await db
+      .update(userPreferences)
+      .set(data)
+      .where(eq(userPreferences.userId, user.id))
+      .returning();
+    preferences = updateResult[0];
+  } else {
+    // Create new
+    const insertResult = await db
+      .insert(userPreferences)
+      .values({
+        userId: user.id,
+        ...data,
+      })
+      .returning();
+    preferences = insertResult[0];
+  }
 
   return successResponse(preferences);
 });

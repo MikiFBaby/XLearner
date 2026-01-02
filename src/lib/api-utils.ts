@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { ZodError, ZodSchema } from "zod";
 import { authOptions } from "./auth";
-import { prisma } from "./db";
+import { db } from "./db";
+import { users } from "./schema";
+import { eq } from "drizzle-orm";
 
 // ============================================================
 // API Response Helpers
@@ -48,11 +50,13 @@ export async function getAuthenticatedUser() {
     return null;
   }
 
-  const user = await prisma.user.findUnique({
-    where: { twitterId: session.user.twitterId },
-  });
+  const result = await db
+    .select()
+    .from(users)
+    .where(eq(users.twitterId, session.user.twitterId))
+    .limit(1);
 
-  return user;
+  return result[0] || null;
 }
 
 export async function requireAuth() {

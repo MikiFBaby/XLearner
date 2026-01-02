@@ -1,5 +1,7 @@
 import { NextRequest } from "next/server";
-import { prisma } from "@/lib/db";
+import { db } from "@/lib/db";
+import { bookmarks } from "@/lib/schema";
+import { eq, and, gte, lte, ilike, isNull, isNotNull, desc, asc, count, sql } from "drizzle-orm";
 import {
   paginatedResponse,
   requireAuth,
@@ -7,7 +9,6 @@ import {
   withErrorHandler,
 } from "@/lib/api-utils";
 import { bookmarkFilterSchema } from "@/lib/validations";
-import { Prisma } from "@prisma/client";
 
 // GET /api/bookmarks - List user's bookmarks with filtering and pagination
 export const GET = withErrorHandler(async (request: NextRequest) => {
@@ -16,80 +17,88 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
   const { searchParams } = new URL(request.url);
   const filters = validateQuery(searchParams, bookmarkFilterSchema);
 
-  // Build where clause
-  const where: Prisma.BookmarkWhereInput = {
-    userId: user.id,
-  };
+  // Build where conditions
+  const conditions = [eq(bookmarks.userId, user.id)];
 
   if (filters.topics) {
     const topicsArray = filters.topics.split(",").map((t) => t.trim());
-    where.topics = { hasSome: topicsArray };
+    // Check if any of the topics match
+    conditions.push(sql`${bookmarks.topics} && ARRAY[${sql.join(topicsArray.map(t => sql`${t}`), sql`, `)}]::text[]`);
   }
 
   if (filters.author) {
-    where.tweetAuthorHandle = { contains: filters.author, mode: "insensitive" };
+    conditions.push(ilike(bookmarks.tweetAuthorHandle, `%${filters.author}%`));
   }
 
-  if (filters.dateFrom || filters.dateTo) {
-    where.bookmarkedAt = {};
-    if (filters.dateFrom) {
-      where.bookmarkedAt.gte = new Date(filters.dateFrom);
-    }
-    if (filters.dateTo) {
-      where.bookmarkedAt.lte = new Date(filters.dateTo);
-    }
+  if (filters.dateFrom) {
+    conditions.push(gte(bookmarks.bookmarkedAt, new Date(filters.dateFrom)));
+  }
+
+  if (filters.dateTo) {
+    conditions.push(lte(bookmarks.bookmarkedAt, new Date(filters.dateTo)));
   }
 
   if (filters.hasMedia !== undefined) {
-    where.hasMedia = filters.hasMedia;
+    conditions.push(eq(bookmarks.hasMedia, filters.hasMedia));
   }
 
   if (filters.isProcessed !== undefined) {
-    where.lastProcessedAt = filters.isProcessed ? { not: null } : null;
+    if (filters.isProcessed) {
+      conditions.push(isNotNull(bookmarks.lastProcessedAt));
+    } else {
+      conditions.push(isNull(bookmarks.lastProcessedAt));
+    }
   }
 
   if (filters.learningDepth) {
-    where.learningDepth = filters.learningDepth;
+    conditions.push(eq(bookmarks.learningDepth, filters.learningDepth));
   }
 
+  const whereClause = and(...conditions);
+
   // Get total count
-  const total = await prisma.bookmark.count({ where });
+  const totalResult = await db
+    .select({ count: count() })
+    .from(bookmarks)
+    .where(whereClause);
+  const total = totalResult[0]?.count || 0;
 
   // Build orderBy
-  const orderBy: Prisma.BookmarkOrderByWithRelationInput = {
-    [filters.sortBy]: filters.sortOrder,
-  };
+  const sortColumn = filters.sortBy === "bookmarkedAt" ? bookmarks.bookmarkedAt :
+                     filters.sortBy === "tweetCreatedAt" ? bookmarks.tweetCreatedAt :
+                     filters.sortBy === "tweetLikes" ? bookmarks.tweetLikes :
+                     bookmarks.bookmarkedAt;
+
+  const orderByClause = filters.sortOrder === "asc" ? asc(sortColumn) : desc(sortColumn);
 
   // Get paginated results
-  const bookmarks = await prisma.bookmark.findMany({
-    where,
-    orderBy,
-    skip: (filters.page - 1) * filters.pageSize,
-    take: filters.pageSize,
-    select: {
-      id: true,
-      tweetId: true,
-      tweetText: true,
-      tweetAuthorId: true,
-      tweetAuthorName: true,
-      tweetAuthorHandle: true,
-      tweetCreatedAt: true,
-      tweetLikes: true,
-      tweetRetweets: true,
-      tweetUrl: true,
-      hasMedia: true,
-      mediaUrls: true,
-      isThread: true,
-      bookmarkedAt: true,
-      lastProcessedAt: true,
-      summary: true,
-      topics: true,
-      learningDepth: true,
-      keyTakeaways: true,
-    },
-  });
+  const results = await db
+    .select({
+      id: bookmarks.id,
+      tweetId: bookmarks.tweetId,
+      tweetText: bookmarks.tweetText,
+      tweetAuthorId: bookmarks.tweetAuthorId,
+      tweetAuthorName: bookmarks.tweetAuthorName,
+      tweetAuthorHandle: bookmarks.tweetAuthorHandle,
+      tweetCreatedAt: bookmarks.tweetCreatedAt,
+      tweetLikes: bookmarks.tweetLikes,
+      tweetRetweets: bookmarks.tweetRetweets,
+      tweetUrl: bookmarks.tweetUrl,
+      hasMedia: bookmarks.hasMedia,
+      mediaUrls: bookmarks.mediaUrls,
+      isThread: bookmarks.isThread,
+      bookmarkedAt: bookmarks.bookmarkedAt,
+      lastProcessedAt: bookmarks.lastProcessedAt,
+      summary: bookmarks.summary,
+      topics: bookmarks.topics,
+      learningDepth: bookmarks.learningDepth,
+      keyTakeaways: bookmarks.keyTakeaways,
+    })
+    .from(bookmarks)
+    .where(whereClause)
+    .orderBy(orderByClause)
+    .offset((filters.page - 1) * filters.pageSize)
+    .limit(filters.pageSize);
 
-  return paginatedResponse(bookmarks, filters.page, filters.pageSize, total);
+  return paginatedResponse(results, filters.page, filters.pageSize, total);
 });
-
-// POST /api/bookmarks/sync - Trigger bookmark sync (handled separately)

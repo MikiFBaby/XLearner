@@ -1,5 +1,7 @@
 import { NextRequest } from "next/server";
-import { prisma } from "@/lib/db";
+import { db } from "@/lib/db";
+import { bookmarks, courses, learningProgress, lessons } from "@/lib/schema";
+import { eq, and, isNotNull, isNull, desc, count, sql } from "drizzle-orm";
 import { requireAuth, successResponse, withErrorHandler } from "@/lib/api-utils";
 
 // GET /api/user/dashboard - Get dashboard stats and recommendations
@@ -7,56 +9,66 @@ export const GET = withErrorHandler(async (_request: NextRequest) => {
   const user = await requireAuth();
 
   // Get bookmark stats
-  const [totalBookmarks, processedBookmarks] = await Promise.all([
-    prisma.bookmark.count({ where: { userId: user.id } }),
-    prisma.bookmark.count({
-      where: { userId: user.id, lastProcessedAt: { not: null } },
-    }),
+  const [totalBookmarksResult, processedBookmarksResult] = await Promise.all([
+    db.select({ count: count() }).from(bookmarks).where(eq(bookmarks.userId, user.id)),
+    db.select({ count: count() }).from(bookmarks).where(
+      and(eq(bookmarks.userId, user.id), isNotNull(bookmarks.lastProcessedAt))
+    ),
   ]);
+
+  const totalBookmarks = totalBookmarksResult[0]?.count || 0;
+  const processedBookmarks = processedBookmarksResult[0]?.count || 0;
 
   // Get course stats
-  const [activeCourses, completedCourses] = await Promise.all([
-    prisma.course.count({
-      where: { userId: user.id, status: "published" },
-    }),
-    prisma.learningProgress.count({
-      where: {
-        userId: user.id,
-        status: "completed",
-        lessonId: null, // Course-level progress
-      },
-    }),
+  const [activeCoursesResult, completedCoursesResult] = await Promise.all([
+    db.select({ count: count() }).from(courses).where(
+      and(eq(courses.userId, user.id), eq(courses.status, "published"))
+    ),
+    db.select({ count: count() }).from(learningProgress).where(
+      and(
+        eq(learningProgress.userId, user.id),
+        eq(learningProgress.status, "completed"),
+        isNull(learningProgress.lessonId)
+      )
+    ),
   ]);
 
+  const activeCourses = activeCoursesResult[0]?.count || 0;
+  const completedCourses = completedCoursesResult[0]?.count || 0;
+
   // Get total learning time (from completed lessons)
-  const completedProgress = await prisma.learningProgress.findMany({
-    where: {
-      userId: user.id,
-      status: "completed",
-      lessonId: { not: null },
-    },
-    include: {
-      lesson: {
-        select: { duration: true },
-      },
-    },
-  });
+  const completedProgress = await db
+    .select({
+      lessonId: learningProgress.lessonId,
+      duration: lessons.duration,
+    })
+    .from(learningProgress)
+    .leftJoin(lessons, eq(learningProgress.lessonId, lessons.id))
+    .where(
+      and(
+        eq(learningProgress.userId, user.id),
+        eq(learningProgress.status, "completed"),
+        isNotNull(learningProgress.lessonId)
+      )
+    );
 
   const totalLearningMinutes = Math.round(
-    completedProgress.reduce((acc, p) => acc + (p.lesson?.duration || 0), 0) / 60
+    completedProgress.reduce((acc, p) => acc + (p.duration || 0), 0) / 60
   );
 
   // Get top topics
-  const bookmarksWithTopics = await prisma.bookmark.findMany({
-    where: { userId: user.id },
-    select: { topics: true },
-  });
+  const bookmarksWithTopics = await db
+    .select({ topics: bookmarks.topics })
+    .from(bookmarks)
+    .where(eq(bookmarks.userId, user.id));
 
   const topicCounts: Record<string, number> = {};
   bookmarksWithTopics.forEach((b) => {
-    b.topics.forEach((topic) => {
-      topicCounts[topic] = (topicCounts[topic] || 0) + 1;
-    });
+    if (b.topics) {
+      b.topics.forEach((topic) => {
+        topicCounts[topic] = (topicCounts[topic] || 0) + 1;
+      });
+    }
   });
 
   const topTopics = Object.entries(topicCounts)
@@ -65,29 +77,30 @@ export const GET = withErrorHandler(async (_request: NextRequest) => {
     .map(([topic, count]) => ({ topic, count }));
 
   // Get current course (most recently accessed)
-  const currentProgress = await prisma.learningProgress.findFirst({
-    where: {
-      userId: user.id,
-      status: "in_progress",
-    },
-    orderBy: { lastAccessedAt: "desc" },
-    include: {
-      course: {
-        select: {
-          id: true,
-          title: true,
-          estimatedMinutes: true,
-        },
-      },
-      lesson: {
-        select: {
-          id: true,
-          title: true,
-          moduleId: true,
-        },
-      },
-    },
-  });
+  const currentProgressResult = await db
+    .select({
+      progressId: learningProgress.id,
+      courseId: learningProgress.courseId,
+      lessonId: learningProgress.lessonId,
+      progressPercent: learningProgress.progressPercent,
+      courseTitle: courses.title,
+      estimatedMinutes: courses.estimatedMinutes,
+      lessonTitle: lessons.title,
+      lessonModuleId: lessons.moduleId,
+    })
+    .from(learningProgress)
+    .innerJoin(courses, eq(learningProgress.courseId, courses.id))
+    .leftJoin(lessons, eq(learningProgress.lessonId, lessons.id))
+    .where(
+      and(
+        eq(learningProgress.userId, user.id),
+        eq(learningProgress.status, "in_progress")
+      )
+    )
+    .orderBy(desc(learningProgress.lastAccessedAt))
+    .limit(1);
+
+  const currentProgress = currentProgressResult[0];
 
   // Get recommendations
   const recommendations = [];
@@ -96,7 +109,7 @@ export const GET = withErrorHandler(async (_request: NextRequest) => {
     recommendations.push({
       type: "continue",
       title: "Continue Learning",
-      description: `Pick up where you left off: ${currentProgress.lesson?.title || currentProgress.course.title}`,
+      description: `Pick up where you left off: ${currentProgress.lessonTitle || currentProgress.courseTitle}`,
       courseId: currentProgress.courseId,
       lessonId: currentProgress.lessonId,
       estimatedMinutes: 15,
@@ -125,8 +138,16 @@ export const GET = withErrorHandler(async (_request: NextRequest) => {
     },
     currentCourse: currentProgress
       ? {
-          ...currentProgress.course,
-          currentLesson: currentProgress.lesson,
+          id: currentProgress.courseId,
+          title: currentProgress.courseTitle,
+          estimatedMinutes: currentProgress.estimatedMinutes,
+          currentLesson: currentProgress.lessonId
+            ? {
+                id: currentProgress.lessonId,
+                title: currentProgress.lessonTitle,
+                moduleId: currentProgress.lessonModuleId,
+              }
+            : null,
           progressPercent: currentProgress.progressPercent,
         }
       : null,

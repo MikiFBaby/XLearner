@@ -1,5 +1,7 @@
 import { NextRequest } from "next/server";
-import { prisma } from "@/lib/db";
+import { db } from "@/lib/db";
+import { courses, modules, backgroundJobs } from "@/lib/schema";
+import { eq, and, desc, asc, count } from "drizzle-orm";
 import {
   paginatedResponse,
   requireAuth,
@@ -9,7 +11,6 @@ import {
   withErrorHandler,
 } from "@/lib/api-utils";
 import { courseFilterSchema, createCourseSchema } from "@/lib/validations";
-import { Prisma } from "@prisma/client";
 
 // GET /api/courses - List user's courses
 export const GET = withErrorHandler(async (request: NextRequest) => {
@@ -18,50 +19,69 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
   const { searchParams } = new URL(request.url);
   const filters = validateQuery(searchParams, courseFilterSchema);
 
-  const where: Prisma.CourseWhereInput = {
-    userId: user.id,
-  };
+  // Build where conditions
+  const conditions = [eq(courses.userId, user.id)];
 
   if (filters.status) {
-    where.status = filters.status;
+    conditions.push(eq(courses.status, filters.status));
   }
 
-  const total = await prisma.course.count({ where });
+  const whereClause = and(...conditions);
 
-  const orderBy: Prisma.CourseOrderByWithRelationInput = {
-    [filters.sortBy]: filters.sortOrder,
-  };
+  // Get total count
+  const totalResult = await db
+    .select({ count: count() })
+    .from(courses)
+    .where(whereClause);
+  const total = totalResult[0]?.count || 0;
 
-  const courses = await prisma.course.findMany({
-    where,
-    orderBy,
-    skip: (filters.page - 1) * filters.pageSize,
-    take: filters.pageSize,
-    include: {
-      _count: {
-        select: {
-          modules: true,
-          progress: true,
+  // Build orderBy
+  const sortColumn = filters.sortBy === "createdAt" ? courses.createdAt :
+                     filters.sortBy === "updatedAt" ? courses.updatedAt :
+                     filters.sortBy === "title" ? courses.title :
+                     courses.createdAt;
+
+  const orderByClause = filters.sortOrder === "asc" ? asc(sortColumn) : desc(sortColumn);
+
+  // Get paginated results
+  const courseResults = await db
+    .select()
+    .from(courses)
+    .where(whereClause)
+    .orderBy(orderByClause)
+    .offset((filters.page - 1) * filters.pageSize)
+    .limit(filters.pageSize);
+
+  // Get modules for each course
+  const coursesWithModules = await Promise.all(
+    courseResults.map(async (course) => {
+      const courseModules = await db
+        .select({
+          id: modules.id,
+          title: modules.title,
+          orderIndex: modules.orderIndex,
+        })
+        .from(modules)
+        .where(eq(modules.courseId, course.id))
+        .orderBy(asc(modules.orderIndex))
+        .limit(5);
+
+      const moduleCount = await db
+        .select({ count: count() })
+        .from(modules)
+        .where(eq(modules.courseId, course.id));
+
+      return {
+        ...course,
+        _count: {
+          modules: moduleCount[0]?.count || 0,
         },
-      },
-      modules: {
-        select: {
-          id: true,
-          title: true,
-          orderIndex: true,
-          _count: {
-            select: {
-              lessons: true,
-            },
-          },
-        },
-        orderBy: { orderIndex: "asc" },
-        take: 5,
-      },
-    },
-  });
+        modules: courseModules,
+      };
+    })
+  );
 
-  return paginatedResponse(courses, filters.page, filters.pageSize, total);
+  return paginatedResponse(coursesWithModules, filters.page, filters.pageSize, total);
 });
 
 // POST /api/courses - Create a new course
@@ -74,8 +94,9 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     ? Math.max(15, data.bookmarkIds.length * 5)
     : 30;
 
-  const course = await prisma.course.create({
-    data: {
+  const courseResult = await db
+    .insert(courses)
+    .values({
       userId: user.id,
       title: data.title,
       description: data.description,
@@ -83,27 +104,24 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       topics: data.topics,
       estimatedMinutes,
       status: "draft",
-    },
-    include: {
-      modules: true,
-    },
-  });
+    })
+    .returning();
+
+  const course = courseResult[0];
 
   // If auto-generate is requested, queue a background job
   if (data.autoGenerate && data.bookmarkIds && data.bookmarkIds.length > 0) {
-    await prisma.backgroundJob.create({
-      data: {
-        jobType: "generate_course",
-        userId: user.id,
-        status: "pending",
-        payload: {
-          courseId: course.id,
-          bookmarkIds: data.bookmarkIds,
-          userInstructions: data.userInstructions,
-        },
+    await db.insert(backgroundJobs).values({
+      jobType: "generate_course",
+      userId: user.id,
+      status: "pending",
+      payload: {
+        courseId: course.id,
+        bookmarkIds: data.bookmarkIds,
+        userInstructions: data.userInstructions,
       },
     });
   }
 
-  return successResponse(course, 201);
+  return successResponse({ ...course, modules: [] }, 201);
 });

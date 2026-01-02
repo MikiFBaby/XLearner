@@ -1,5 +1,7 @@
 import { NextRequest } from "next/server";
-import { prisma } from "@/lib/db";
+import { db } from "@/lib/db";
+import { courses, modules, lessons, quizzes, moduleBookmarks, bookmarks, learningProgress } from "@/lib/schema";
+import { eq, and, asc } from "drizzle-orm";
 import {
   errorResponse,
   ForbiddenError,
@@ -25,57 +27,13 @@ export const GET = withErrorHandler(
       return errorResponse("Course ID is required", 400);
     }
 
-    const course = await prisma.course.findUnique({
-      where: { id: courseId },
-      include: {
-        modules: {
-          orderBy: { orderIndex: "asc" },
-          include: {
-            lessons: {
-              orderBy: { orderIndex: "asc" },
-              select: {
-                id: true,
-                orderIndex: true,
-                title: true,
-                duration: true,
-                audioUrl: true,
-              },
-            },
-            quizzes: {
-              select: {
-                id: true,
-                title: true,
-                passingScore: true,
-              },
-            },
-            bookmarks: {
-              include: {
-                bookmark: {
-                  select: {
-                    id: true,
-                    tweetText: true,
-                    tweetAuthorHandle: true,
-                    tweetUrl: true,
-                    summary: true,
-                  },
-                },
-              },
-              orderBy: { orderIndex: "asc" },
-            },
-          },
-        },
-        progress: {
-          where: { userId: user.id },
-          select: {
-            lessonId: true,
-            status: true,
-            progressPercent: true,
-            lastPosition: true,
-            lastAccessedAt: true,
-          },
-        },
-      },
-    });
+    const courseResult = await db
+      .select()
+      .from(courses)
+      .where(eq(courses.id, courseId))
+      .limit(1);
+
+    const course = courseResult[0];
 
     if (!course) {
       throw new NotFoundError("Course");
@@ -85,12 +43,87 @@ export const GET = withErrorHandler(
       throw new ForbiddenError();
     }
 
+    // Get modules with lessons, quizzes, and bookmarks
+    const courseModules = await db
+      .select()
+      .from(modules)
+      .where(eq(modules.courseId, courseId))
+      .orderBy(asc(modules.orderIndex));
+
+    const modulesWithContent = await Promise.all(
+      courseModules.map(async (module) => {
+        // Get lessons
+        const moduleLessons = await db
+          .select({
+            id: lessons.id,
+            orderIndex: lessons.orderIndex,
+            title: lessons.title,
+            duration: lessons.duration,
+            audioUrl: lessons.audioUrl,
+          })
+          .from(lessons)
+          .where(eq(lessons.moduleId, module.id))
+          .orderBy(asc(lessons.orderIndex));
+
+        // Get quizzes
+        const moduleQuizzes = await db
+          .select({
+            id: quizzes.id,
+            title: quizzes.title,
+            passingScore: quizzes.passingScore,
+          })
+          .from(quizzes)
+          .where(eq(quizzes.moduleId, module.id));
+
+        // Get bookmarks
+        const moduleBookmarkJoins = await db
+          .select({
+            orderIndex: moduleBookmarks.orderIndex,
+            bookmark: {
+              id: bookmarks.id,
+              tweetText: bookmarks.tweetText,
+              tweetAuthorHandle: bookmarks.tweetAuthorHandle,
+              tweetUrl: bookmarks.tweetUrl,
+              summary: bookmarks.summary,
+            },
+          })
+          .from(moduleBookmarks)
+          .innerJoin(bookmarks, eq(moduleBookmarks.bookmarkId, bookmarks.id))
+          .where(eq(moduleBookmarks.moduleId, module.id))
+          .orderBy(asc(moduleBookmarks.orderIndex));
+
+        return {
+          ...module,
+          lessons: moduleLessons,
+          quizzes: moduleQuizzes,
+          bookmarks: moduleBookmarkJoins,
+        };
+      })
+    );
+
+    // Get progress
+    const progress = await db
+      .select({
+        lessonId: learningProgress.lessonId,
+        status: learningProgress.status,
+        progressPercent: learningProgress.progressPercent,
+        lastPosition: learningProgress.lastPosition,
+        lastAccessedAt: learningProgress.lastAccessedAt,
+      })
+      .from(learningProgress)
+      .where(
+        and(
+          eq(learningProgress.userId, user.id),
+          eq(learningProgress.courseId, courseId)
+        )
+      );
+
     // Calculate overall progress
-    const totalLessons = course.modules.reduce(
+    const totalLessons = modulesWithContent.reduce(
       (acc, m) => acc + m.lessons.length,
       0
     );
-    const completedLessons = course.progress.filter(
+    const completedLessons = progress.filter(
       (p) => p.status === "completed"
     ).length;
     const overallProgress =
@@ -98,6 +131,8 @@ export const GET = withErrorHandler(
 
     return successResponse({
       ...course,
+      modules: modulesWithContent,
+      progress,
       overallProgress,
       totalLessons,
       completedLessons,
@@ -115,9 +150,13 @@ export const PATCH = withErrorHandler(
       return errorResponse("Course ID is required", 400);
     }
 
-    const course = await prisma.course.findUnique({
-      where: { id: courseId },
-    });
+    const courseResult = await db
+      .select()
+      .from(courses)
+      .where(eq(courses.id, courseId))
+      .limit(1);
+
+    const course = courseResult[0];
 
     if (!course) {
       throw new NotFoundError("Course");
@@ -129,15 +168,17 @@ export const PATCH = withErrorHandler(
 
     const data = await validateBody(request, updateCourseSchema);
 
-    const updated = await prisma.course.update({
-      where: { id: courseId },
-      data: {
+    const updatedResult = await db
+      .update(courses)
+      .set({
         ...data,
         publishedAt: data.status === "published" ? new Date() : course.publishedAt,
-      },
-    });
+        updatedAt: new Date(),
+      })
+      .where(eq(courses.id, courseId))
+      .returning();
 
-    return successResponse(updated);
+    return successResponse(updatedResult[0]);
   }
 );
 
@@ -151,9 +192,13 @@ export const DELETE = withErrorHandler(
       return errorResponse("Course ID is required", 400);
     }
 
-    const course = await prisma.course.findUnique({
-      where: { id: courseId },
-    });
+    const courseResult = await db
+      .select()
+      .from(courses)
+      .where(eq(courses.id, courseId))
+      .limit(1);
+
+    const course = courseResult[0];
 
     if (!course) {
       throw new NotFoundError("Course");
@@ -164,9 +209,7 @@ export const DELETE = withErrorHandler(
     }
 
     // Delete cascade will handle modules, lessons, etc.
-    await prisma.course.delete({
-      where: { id: courseId },
-    });
+    await db.delete(courses).where(eq(courses.id, courseId));
 
     return successResponse({ message: "Course deleted" });
   }

@@ -1,5 +1,7 @@
 import { NextRequest } from "next/server";
-import { prisma } from "@/lib/db";
+import { db } from "@/lib/db";
+import { bookmarks, moduleBookmarks, modules, courses } from "@/lib/schema";
+import { eq } from "drizzle-orm";
 import {
   errorResponse,
   ForbiddenError,
@@ -25,27 +27,13 @@ export const GET = withErrorHandler(
       return errorResponse("Bookmark ID is required", 400);
     }
 
-    const bookmark = await prisma.bookmark.findUnique({
-      where: { id: bookmarkId },
-      include: {
-        courseModules: {
-          include: {
-            module: {
-              select: {
-                id: true,
-                title: true,
-                course: {
-                  select: {
-                    id: true,
-                    title: true,
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    });
+    const bookmarkResult = await db
+      .select()
+      .from(bookmarks)
+      .where(eq(bookmarks.id, bookmarkId))
+      .limit(1);
+
+    const bookmark = bookmarkResult[0];
 
     if (!bookmark) {
       throw new NotFoundError("Bookmark");
@@ -55,7 +43,23 @@ export const GET = withErrorHandler(
       throw new ForbiddenError();
     }
 
-    return successResponse(bookmark);
+    // Get associated modules
+    const courseModulesResult = await db
+      .select({
+        moduleId: moduleBookmarks.moduleId,
+        moduleTitle: modules.title,
+        courseId: courses.id,
+        courseTitle: courses.title,
+      })
+      .from(moduleBookmarks)
+      .innerJoin(modules, eq(moduleBookmarks.moduleId, modules.id))
+      .innerJoin(courses, eq(modules.courseId, courses.id))
+      .where(eq(moduleBookmarks.bookmarkId, bookmarkId));
+
+    return successResponse({
+      ...bookmark,
+      courseModules: courseModulesResult,
+    });
   }
 );
 
@@ -69,9 +73,13 @@ export const PATCH = withErrorHandler(
       return errorResponse("Bookmark ID is required", 400);
     }
 
-    const bookmark = await prisma.bookmark.findUnique({
-      where: { id: bookmarkId },
-    });
+    const bookmarkResult = await db
+      .select()
+      .from(bookmarks)
+      .where(eq(bookmarks.id, bookmarkId))
+      .limit(1);
+
+    const bookmark = bookmarkResult[0];
 
     if (!bookmark) {
       throw new NotFoundError("Bookmark");
@@ -83,15 +91,16 @@ export const PATCH = withErrorHandler(
 
     const data = await validateBody(request, updateBookmarkSchema);
 
-    const updated = await prisma.bookmark.update({
-      where: { id: bookmarkId },
-      data: {
+    const updatedResult = await db
+      .update(bookmarks)
+      .set({
         ...data,
         lastProcessedAt: new Date(),
-      },
-    });
+      })
+      .where(eq(bookmarks.id, bookmarkId))
+      .returning();
 
-    return successResponse(updated);
+    return successResponse(updatedResult[0]);
   }
 );
 
@@ -105,9 +114,13 @@ export const DELETE = withErrorHandler(
       return errorResponse("Bookmark ID is required", 400);
     }
 
-    const bookmark = await prisma.bookmark.findUnique({
-      where: { id: bookmarkId },
-    });
+    const bookmarkResult = await db
+      .select()
+      .from(bookmarks)
+      .where(eq(bookmarks.id, bookmarkId))
+      .limit(1);
+
+    const bookmark = bookmarkResult[0];
 
     if (!bookmark) {
       throw new NotFoundError("Bookmark");
@@ -117,9 +130,7 @@ export const DELETE = withErrorHandler(
       throw new ForbiddenError();
     }
 
-    await prisma.bookmark.delete({
-      where: { id: bookmarkId },
-    });
+    await db.delete(bookmarks).where(eq(bookmarks.id, bookmarkId));
 
     return successResponse({ message: "Bookmark deleted" });
   }
