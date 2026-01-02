@@ -46,17 +46,89 @@ function extractRedditInfo(url: string): { subreddit?: string } {
   return { subreddit: match ? match[1] : undefined };
 }
 
-// Generate a short summary from video title and description
-function generateVideoSummary(title: string, description?: string): string {
-  // Clean up title - remove common suffixes
+// Use Gemini AI to generate summary and extract skills
+async function generateAISummaryAndSkills(
+  title: string,
+  description?: string,
+  tags?: string[]
+): Promise<{ summary: string; skills: string[] }> {
+  const geminiApiKey = process.env.IMAGE_GEN_API_KEY;
+
+  // Fallback to basic extraction if no API key
+  if (!geminiApiKey) {
+    return {
+      summary: generateBasicSummary(title, description),
+      skills: extractBasicSkills(tags, title),
+    };
+  }
+
+  try {
+    const prompt = `Analyze this YouTube video and provide:
+1. A concise 1-2 sentence summary of what viewers will learn (max 150 chars)
+2. 3-5 specific skills or insights gained from watching this video
+
+Title: ${title}
+Description: ${description?.slice(0, 500) || 'No description'}
+Tags: ${tags?.slice(0, 10).join(', ') || 'None'}
+
+Respond in JSON format only:
+{"summary": "...", "skills": ["skill1", "skill2", "skill3"]}`;
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0.3,
+            maxOutputTokens: 256,
+          },
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      console.error('Gemini API error:', await response.text());
+      return {
+        summary: generateBasicSummary(title, description),
+        skills: extractBasicSkills(tags, title),
+      };
+    }
+
+    const data = await response.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+    // Parse JSON from response
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      return {
+        summary: parsed.summary?.slice(0, 200) || generateBasicSummary(title, description),
+        skills: Array.isArray(parsed.skills) ? parsed.skills.slice(0, 5) : extractBasicSkills(tags, title),
+      };
+    }
+  } catch (error) {
+    console.error('Error calling Gemini API:', error);
+  }
+
+  // Fallback
+  return {
+    summary: generateBasicSummary(title, description),
+    skills: extractBasicSkills(tags, title),
+  };
+}
+
+// Basic summary generation (fallback)
+function generateBasicSummary(title: string, description?: string): string {
   let cleanTitle = title
-    .replace(/\s*\|\s*.+$/, '') // Remove "| Channel Name" suffix
-    .replace(/\s*-\s*Official.*$/i, '') // Remove "- Official Video" etc
-    .replace(/\s*\(Official.*\)$/i, '') // Remove "(Official Video)" etc
-    .replace(/\s*\[.*\]$/i, '') // Remove bracketed suffixes
+    .replace(/\s*\|\s*.+$/, '')
+    .replace(/\s*-\s*Official.*$/i, '')
+    .replace(/\s*\(Official.*\)$/i, '')
+    .replace(/\s*\[.*\]$/i, '')
     .trim();
 
-  // If description exists, try to extract first meaningful sentence
   if (description) {
     const firstSentence = description
       .split(/[.!?\n]/)[0]
@@ -68,15 +140,13 @@ function generateVideoSummary(title: string, description?: string): string {
     }
   }
 
-  // Fallback to cleaned title
   return `Learn about ${cleanTitle}`;
 }
 
-// Extract skills/learning outcomes from tags and description
-function extractSkills(tags?: string[], description?: string, title?: string): string[] {
+// Basic skills extraction (fallback)
+function extractBasicSkills(tags?: string[], title?: string): string[] {
   const skills: Set<string> = new Set();
 
-  // Common learning-related keywords to look for
   const skillKeywords = [
     'learn', 'tutorial', 'how to', 'guide', 'tips', 'tricks', 'master',
     'beginner', 'advanced', 'introduction', 'basics', 'fundamentals',
@@ -84,18 +154,15 @@ function extractSkills(tags?: string[], description?: string, title?: string): s
     'productivity', 'communication', 'leadership', 'analytics', 'strategy'
   ];
 
-  // Extract from tags
   if (tags) {
     tags.slice(0, 5).forEach(tag => {
       const cleanTag = tag.toLowerCase().trim();
       if (cleanTag.length > 2 && cleanTag.length < 30) {
-        // Capitalize first letter
         skills.add(tag.charAt(0).toUpperCase() + tag.slice(1).toLowerCase());
       }
     });
   }
 
-  // Extract from title
   if (title) {
     const titleLower = title.toLowerCase();
     skillKeywords.forEach(keyword => {
@@ -105,7 +172,6 @@ function extractSkills(tags?: string[], description?: string, title?: string): s
     });
   }
 
-  // Return top 3-5 skills
   return Array.from(skills).slice(0, 5);
 }
 
@@ -181,6 +247,13 @@ async function fetchYouTubeMetadata(url: string): Promise<{
     const fullDescription = snippet.description || '';
     const videoTags = snippet.tags || [];
 
+    // Use Gemini AI to generate summary and extract skills
+    const aiResult = await generateAISummaryAndSkills(
+      snippet.title,
+      fullDescription,
+      videoTags
+    );
+
     return {
       title: snippet.title,
       description: fullDescription.slice(0, 500),
@@ -192,8 +265,8 @@ async function fetchYouTubeMetadata(url: string): Promise<{
                    snippet.thumbnails?.default?.url,
       tags: videoTags.slice(0, 10),
       channelId,
-      summary: generateVideoSummary(snippet.title, fullDescription),
-      skills: extractSkills(videoTags, fullDescription, snippet.title),
+      summary: aiResult.summary,
+      skills: aiResult.skills,
     };
   } catch (error) {
     console.error("Error fetching YouTube metadata:", error);
@@ -235,6 +308,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
       metadata.authorHandle = ytMetadata.authorProfileImage; // Store profile image in authorHandle
       metadata.thumbnailUrl = ytMetadata.thumbnailUrl;
       metadata.topics = ytMetadata.tags;
+      metadata.summary = ytMetadata.summary;
+      metadata.skills = ytMetadata.skills;
     }
   } else if (platform === "reddit") {
     const redditInfo = extractRedditInfo(body.url);
