@@ -431,11 +431,24 @@ export const PATCH = withErrorHandler(async (_request: NextRequest) => {
     console.log(`[PATCH] Resource ${resource.id}: needsUpdate=${needsUpdate}, title=${resource.title?.slice(0, 30)}, summary=${resource.summary?.slice(0, 30)}, skills=${resource.keyTakeaways?.length || 0}`);
 
     if (needsUpdate) {
-      const metadata = await fetchYouTubeMetadata(resource.url);
+      let metadata = await fetchYouTubeMetadata(resource.url);
 
       console.log(`[PATCH] Fetched metadata: summary=${metadata.summary?.slice(0, 50)}, skills=${metadata.skills?.length || 0}, authorProfileImage=${metadata.authorProfileImage?.slice(0, 50)}`);
 
-      if (metadata.title || metadata.authorName || metadata.authorProfileImage) {
+      // If external API failed but we have existing title, generate summary/skills locally
+      const hasNoMetadata = !metadata.title && !metadata.authorName && !metadata.authorProfileImage;
+      if (hasNoMetadata && resource.title) {
+        console.log(`[PATCH] API failed, generating from existing title: ${resource.title?.slice(0, 40)}`);
+        const fallbackSummary = generateBasicSummary(resource.title, resource.description || undefined);
+        const fallbackSkills = extractBasicSkills(resource.topics || undefined, resource.title);
+        metadata = {
+          summary: fallbackSummary,
+          skills: fallbackSkills,
+        };
+      }
+
+      // Update if we have new metadata OR we generated fallback data
+      if (metadata.title || metadata.authorName || metadata.authorProfileImage || metadata.summary || metadata.skills?.length) {
         await db
           .update(resources)
           .set({
@@ -451,7 +464,7 @@ export const PATCH = withErrorHandler(async (_request: NextRequest) => {
           })
           .where(eq(resources.id, resource.id));
         updated++;
-        console.log(`[PATCH] Updated resource ${resource.id}`);
+        console.log(`[PATCH] Updated resource ${resource.id} with summary: ${metadata.summary?.slice(0, 50)}`);
       }
     }
   }
