@@ -4,11 +4,7 @@ import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { BookOpen, Loader2, Eye, EyeOff, AlertCircle, CheckCircle2 } from "lucide-react";
+import { BookOpen, Loader2, Eye, EyeOff, AlertCircle, CheckCircle2, ArrowLeft } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -58,129 +54,126 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-background to-muted p-4">
-      <div className="mb-8 flex items-center gap-3">
-        <BookOpen className="h-12 w-12 text-primary" />
-        <h1 className="text-4xl font-bold">XLearner</h1>
-      </div>
+    <div className="min-h-screen bg-[#0a0118] text-white flex flex-col">
+      {/* Background effects */}
+      <div className="fixed inset-0 bg-gradient-to-br from-purple-900/30 via-[#0a0118] to-[#0a0118] pointer-events-none" />
+      <div className="fixed top-0 right-0 w-[500px] h-[500px] bg-purple-600/20 rounded-full blur-[120px] translate-x-1/2 -translate-y-1/2 pointer-events-none" />
+      <div className="fixed bottom-0 left-0 w-[400px] h-[400px] bg-indigo-600/20 rounded-full blur-[100px] -translate-x-1/2 translate-y-1/2 pointer-events-none" />
 
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl">Welcome Back</CardTitle>
-          <CardDescription>
-            Transform your Twitter bookmarks into personalized learning courses
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-            {registered && (
-              <div className="flex items-center gap-2 rounded-md bg-green-500/10 p-3 text-sm text-green-600">
-                <CheckCircle2 className="h-4 w-4" />
-                Account created successfully! Please sign in.
-              </div>
-            )}
+      {/* Header */}
+      <header className="relative z-10 p-6">
+        <Link href="/" className="inline-flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
+          <ArrowLeft className="h-4 w-4" />
+          Back to home
+        </Link>
+      </header>
 
-            {error && (
-              <div className="flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-                <AlertCircle className="h-4 w-4" />
-                {error}
-              </div>
-            )}
+      {/* Main Content */}
+      <main className="relative z-10 flex-1 flex items-center justify-center p-6">
+        <div className="w-full max-w-md">
+          {/* Logo */}
+          <div className="flex items-center justify-center gap-2 mb-8">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 to-indigo-600">
+              <BookOpen className="h-5 w-5 text-white" />
+            </div>
+            <span className="text-2xl font-bold">XLearner</span>
+          </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                name="email"
-                type="email"
-                placeholder="you@example.com"
-                value={formData.email}
-                onChange={handleChange}
-                required
-                disabled={isLoading}
-              />
+          {/* Card */}
+          <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-8">
+            <div className="text-center mb-6">
+              <h1 className="text-2xl font-bold">Welcome back</h1>
+              <p className="text-gray-400 mt-1">Sign in to continue learning</p>
             </div>
 
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="password">Password</Label>
-                <Link
-                  href="/forgot-password"
-                  className="text-xs text-muted-foreground hover:text-primary"
-                >
-                  Forgot password?
-                </Link>
-              </div>
-              <div className="relative">
-                <Input
-                  id="password"
-                  name="password"
-                  type={showPassword ? "text" : "password"}
-                  placeholder="Your password"
-                  value={formData.password}
+            <form onSubmit={handleSubmit} className="space-y-5">
+              {registered && (
+                <div className="flex items-center gap-2 rounded-lg bg-green-500/10 border border-green-500/20 p-3 text-sm text-green-400">
+                  <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
+                  Account created successfully! Please sign in.
+                </div>
+              )}
+
+              {error && (
+                <div className="flex items-center gap-2 rounded-lg bg-red-500/10 border border-red-500/20 p-3 text-sm text-red-400">
+                  <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                  {error}
+                </div>
+              )}
+
+              <div>
+                <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-2">
+                  Email
+                </label>
+                <input
+                  id="email"
+                  name="email"
+                  type="email"
+                  placeholder="you@example.com"
+                  value={formData.email}
                   onChange={handleChange}
                   required
                   disabled={isLoading}
-                  className="pr-10"
+                  className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-gray-500 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-all disabled:opacity-50"
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                >
-                  {showPassword ? (
-                    <EyeOff className="h-4 w-4" />
-                  ) : (
-                    <Eye className="h-4 w-4" />
-                  )}
-                </button>
               </div>
-            </div>
 
-            <Button type="submit" size="lg" disabled={isLoading} className="w-full">
-              {isLoading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Signing in...
-                </>
-              ) : (
-                "Sign In"
-              )}
-            </Button>
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label htmlFor="password" className="block text-sm font-medium text-gray-300">
+                    Password
+                  </label>
+                  <Link href="/forgot-password" className="text-xs text-purple-400 hover:text-purple-300 transition-colors">
+                    Forgot password?
+                  </Link>
+                </div>
+                <div className="relative">
+                  <input
+                    id="password"
+                    name="password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="Your password"
+                    value={formData.password}
+                    onChange={handleChange}
+                    required
+                    disabled={isLoading}
+                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-gray-500 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-all pr-12 disabled:opacity-50"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors"
+                  >
+                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                  </button>
+                </div>
+              </div>
 
-            <p className="text-center text-sm text-muted-foreground">
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full py-3 bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 rounded-xl font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    Signing in...
+                  </>
+                ) : (
+                  "Sign In"
+                )}
+              </button>
+            </form>
+
+            <p className="text-center text-gray-400 mt-6 text-sm">
               Don&apos;t have an account?{" "}
-              <Link href="/signup" className="font-medium text-primary hover:underline">
+              <Link href="/signup" className="text-purple-400 hover:text-purple-300 font-medium transition-colors">
                 Sign up
               </Link>
             </p>
-          </form>
-        </CardContent>
-      </Card>
-
-      <div className="mt-12 grid max-w-3xl gap-8 text-center md:grid-cols-3">
-        <div>
-          <div className="mb-2 text-3xl">1</div>
-          <h3 className="font-semibold">Create Account</h3>
-          <p className="text-sm text-muted-foreground">
-            Sign up and connect your X account
-          </p>
+          </div>
         </div>
-        <div>
-          <div className="mb-2 text-3xl">2</div>
-          <h3 className="font-semibold">Sync Bookmarks</h3>
-          <p className="text-sm text-muted-foreground">
-            Import and analyze your saved tweets
-          </p>
-        </div>
-        <div>
-          <div className="mb-2 text-3xl">3</div>
-          <h3 className="font-semibold">Learn & Grow</h3>
-          <p className="text-sm text-muted-foreground">
-            Get personalized courses with audio
-          </p>
-        </div>
-      </div>
+      </main>
     </div>
   );
 }
