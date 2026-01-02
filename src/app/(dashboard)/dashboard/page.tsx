@@ -1,7 +1,9 @@
 import { Suspense } from "react";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/db";
+import { db } from "@/lib/db";
+import { users, bookmarks, courses, learningProgress, lessons, modules } from "@/lib/schema";
+import { eq, and, desc, isNotNull, count } from "drizzle-orm";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -22,48 +24,55 @@ async function DashboardStats() {
   const session = await getServerSession(authOptions);
   if (!session?.user?.twitterId) return null;
 
-  const user = await prisma.user.findUnique({
-    where: { twitterId: session.user.twitterId },
-  });
+  const userResult = await db
+    .select()
+    .from(users)
+    .where(eq(users.twitterId, session.user.twitterId))
+    .limit(1);
 
+  const user = userResult[0];
   if (!user) return null;
 
-  const [totalBookmarks, processedBookmarks, activeCourses, completedLessons] =
+  const [totalBookmarksResult, processedBookmarksResult, activeCoursesResult, completedLessonsResult] =
     await Promise.all([
-      prisma.bookmark.count({ where: { userId: user.id } }),
-      prisma.bookmark.count({
-        where: { userId: user.id, lastProcessedAt: { not: null } },
-      }),
-      prisma.course.count({
-        where: { userId: user.id, status: "published" },
-      }),
-      prisma.learningProgress.count({
-        where: { userId: user.id, status: "completed", lessonId: { not: null } },
-      }),
+      db.select({ count: count() }).from(bookmarks).where(eq(bookmarks.userId, user.id)),
+      db.select({ count: count() }).from(bookmarks).where(
+        and(eq(bookmarks.userId, user.id), isNotNull(bookmarks.lastProcessedAt))
+      ),
+      db.select({ count: count() }).from(courses).where(
+        and(eq(courses.userId, user.id), eq(courses.status, "published"))
+      ),
+      db.select({ count: count() }).from(learningProgress).where(
+        and(
+          eq(learningProgress.userId, user.id),
+          eq(learningProgress.status, "completed"),
+          isNotNull(learningProgress.lessonId)
+        )
+      ),
     ]);
 
   const stats = [
     {
       name: "Total Bookmarks",
-      value: totalBookmarks,
+      value: totalBookmarksResult[0]?.count || 0,
       icon: Bookmark,
       color: "text-blue-500",
     },
     {
       name: "Analyzed",
-      value: processedBookmarks,
+      value: processedBookmarksResult[0]?.count || 0,
       icon: Sparkles,
       color: "text-purple-500",
     },
     {
       name: "Active Courses",
-      value: activeCourses,
+      value: activeCoursesResult[0]?.count || 0,
       icon: GraduationCap,
       color: "text-green-500",
     },
     {
       name: "Lessons Completed",
-      value: completedLessons,
+      value: completedLessonsResult[0]?.count || 0,
       icon: TrendingUp,
       color: "text-orange-500",
     },
@@ -108,27 +117,39 @@ async function CurrentLearning() {
   const session = await getServerSession(authOptions);
   if (!session?.user?.twitterId) return null;
 
-  const user = await prisma.user.findUnique({
-    where: { twitterId: session.user.twitterId },
-  });
+  const userResult = await db
+    .select()
+    .from(users)
+    .where(eq(users.twitterId, session.user.twitterId))
+    .limit(1);
 
+  const user = userResult[0];
   if (!user) return null;
 
-  const currentProgress = await prisma.learningProgress.findFirst({
-    where: {
-      userId: user.id,
-      status: "in_progress",
-    },
-    orderBy: { lastAccessedAt: "desc" },
-    include: {
-      course: true,
-      lesson: {
-        include: {
-          module: true,
-        },
-      },
-    },
-  });
+  const currentProgressResult = await db
+    .select({
+      id: learningProgress.id,
+      courseId: learningProgress.courseId,
+      lessonId: learningProgress.lessonId,
+      progressPercent: learningProgress.progressPercent,
+      courseTitle: courses.title,
+      lessonTitle: lessons.title,
+      moduleTitle: modules.title,
+    })
+    .from(learningProgress)
+    .innerJoin(courses, eq(learningProgress.courseId, courses.id))
+    .leftJoin(lessons, eq(learningProgress.lessonId, lessons.id))
+    .leftJoin(modules, eq(lessons.moduleId, modules.id))
+    .where(
+      and(
+        eq(learningProgress.userId, user.id),
+        eq(learningProgress.status, "in_progress")
+      )
+    )
+    .orderBy(desc(learningProgress.lastAccessedAt))
+    .limit(1);
+
+  const currentProgress = currentProgressResult[0];
 
   if (!currentProgress) {
     return (
@@ -165,7 +186,7 @@ async function CurrentLearning() {
               Continue Learning
             </CardTitle>
             <CardDescription className="mt-1">
-              {currentProgress.course.title}
+              {currentProgress.courseTitle}
             </CardDescription>
           </div>
           <Badge variant="secondary">
@@ -177,7 +198,7 @@ async function CurrentLearning() {
         <div>
           <p className="text-sm text-muted-foreground">Current Lesson</p>
           <p className="font-medium">
-            {currentProgress.lesson?.title || "Getting Started"}
+            {currentProgress.lessonTitle || "Getting Started"}
           </p>
         </div>
         <Progress value={currentProgress.progressPercent} />
@@ -196,27 +217,30 @@ async function RecentBookmarks() {
   const session = await getServerSession(authOptions);
   if (!session?.user?.twitterId) return null;
 
-  const user = await prisma.user.findUnique({
-    where: { twitterId: session.user.twitterId },
-  });
+  const userResult = await db
+    .select()
+    .from(users)
+    .where(eq(users.twitterId, session.user.twitterId))
+    .limit(1);
 
+  const user = userResult[0];
   if (!user) return null;
 
-  const bookmarks = await prisma.bookmark.findMany({
-    where: { userId: user.id },
-    orderBy: { bookmarkedAt: "desc" },
-    take: 5,
-    select: {
-      id: true,
-      tweetText: true,
-      tweetAuthorHandle: true,
-      topics: true,
-      summary: true,
-      bookmarkedAt: true,
-    },
-  });
+  const recentBookmarks = await db
+    .select({
+      id: bookmarks.id,
+      tweetText: bookmarks.tweetText,
+      tweetAuthorHandle: bookmarks.tweetAuthorHandle,
+      topics: bookmarks.topics,
+      summary: bookmarks.summary,
+      bookmarkedAt: bookmarks.bookmarkedAt,
+    })
+    .from(bookmarks)
+    .where(eq(bookmarks.userId, user.id))
+    .orderBy(desc(bookmarks.bookmarkedAt))
+    .limit(5);
 
-  if (bookmarks.length === 0) {
+  if (recentBookmarks.length === 0) {
     return (
       <Card>
         <CardHeader>
@@ -255,7 +279,7 @@ async function RecentBookmarks() {
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
-          {bookmarks.map((bookmark) => (
+          {recentBookmarks.map((bookmark) => (
             <div
               key={bookmark.id}
               className="flex flex-col gap-2 border-b pb-4 last:border-0 last:pb-0"
@@ -268,7 +292,7 @@ async function RecentBookmarks() {
                   @{bookmark.tweetAuthorHandle}
                 </span>
                 <div className="flex gap-1">
-                  {bookmark.topics.slice(0, 2).map((topic) => (
+                  {(bookmark.topics || []).slice(0, 2).map((topic) => (
                     <Badge key={topic} variant="secondary" className="text-xs">
                       {topic}
                     </Badge>
@@ -287,22 +311,27 @@ async function TopTopics() {
   const session = await getServerSession(authOptions);
   if (!session?.user?.twitterId) return null;
 
-  const user = await prisma.user.findUnique({
-    where: { twitterId: session.user.twitterId },
-  });
+  const userResult = await db
+    .select()
+    .from(users)
+    .where(eq(users.twitterId, session.user.twitterId))
+    .limit(1);
 
+  const user = userResult[0];
   if (!user) return null;
 
-  const bookmarks = await prisma.bookmark.findMany({
-    where: { userId: user.id },
-    select: { topics: true },
-  });
+  const bookmarksWithTopics = await db
+    .select({ topics: bookmarks.topics })
+    .from(bookmarks)
+    .where(eq(bookmarks.userId, user.id));
 
   const topicCounts: Record<string, number> = {};
-  bookmarks.forEach((b) => {
-    b.topics.forEach((topic) => {
-      topicCounts[topic] = (topicCounts[topic] || 0) + 1;
-    });
+  bookmarksWithTopics.forEach((b) => {
+    if (b.topics) {
+      b.topics.forEach((topic) => {
+        topicCounts[topic] = (topicCounts[topic] || 0) + 1;
+      });
+    }
   });
 
   const topTopics = Object.entries(topicCounts)
